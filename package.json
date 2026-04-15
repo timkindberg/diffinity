@@ -1,0 +1,36 @@
+{
+  "name": "vndly-visual-regression",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Visual regression capture, semantic diffing, and interactive report for VNDLY Canvas rebrand",
+  "scripts": {
+    "setup-users": "npx tsx src/setup-users.ts",
+    "clean": "rm -rf screenshots/before screenshots/after screenshots/report-data.js screenshots/report_v2.html",
+    "clean:before": "rm -rf screenshots/before",
+    "clean:after": "rm -rf screenshots/after",
+    "capture:before": "CAPTURE_PHASE=before time npx tsx src/capture.ts",
+    "capture:after": "CAPTURE_PHASE=after time npx tsx src/capture.ts",
+    "capture:after:faked": "npx tsx src/capture-faked-after.ts",
+    "capture:page": "time npx tsx src/capture.ts --page",
+    "compare": "time npx tsx src/compare-v2.ts",
+    "report": "npm run capture:before && npm run capture:after && npm run compare",
+    "report:faked": "npm run capture:before && npm run capture:after:faked && npm run compare",
+    "sana:report": "bash run-comparison.sh",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "pixelmatch": "^6.0.0",
+    "playwright": "1.57.0",
+    "pngjs": "^7.0.0",
+    "purgecss": "^8.0.0",
+    "tsx": "^4.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pixelmatch": "^5.2.6",
+    "@types/pngjs": "^6.0.5",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.2"
+  }
+}

@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+.env.*
+screenshots/before/
+screenshots/after/
+screenshots/report-data.js
+screenshots/report_v2.html
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
