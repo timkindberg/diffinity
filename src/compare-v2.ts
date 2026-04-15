@@ -1,20 +1,25 @@
 /**
- * Semantic visual diff comparison between before/ and after/ captures.
+ * Semantic visual diff comparison between before/ and after/ capture directories.
  * Loads per-viewport DOM manifests, runs element matching + semantic diffing
- * independently per viewport, outputs report-data.js to screenshots/.
+ * independently per viewport, outputs report data.
  */
-import { readdirSync, readFileSync, writeFileSync, existsSync, statSync } from 'fs'
-import { join, dirname } from 'path'
-import { fileURLToPath } from 'url'
-import { config } from './config.js'
+import { readdirSync, readFileSync, writeFileSync, existsSync, statSync, mkdirSync } from 'fs'
+import { join } from 'path'
 import { diffManifestsByViewport, type ViewportDiffResult } from './viewport-diff.js'
 import type { DomManifest } from './dom-manifest.js'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const screenshotDir = config.screenshotDir
-const beforeDir = join(screenshotDir, 'before')
-const afterDir = join(screenshotDir, 'after')
-const VIEWPORTS = config.viewports.map(v => v.width)
+export type ComparePageOptions = {
+  /** Directory containing 'before' captures */
+  beforeDir: string
+  /** Directory containing 'after' captures */
+  afterDir: string
+  /** Viewport widths to compare (default: auto-detected from manifests) */
+  widths?: number[]
+  /** Directory to write report output (default: parent of beforeDir) */
+  reportDir?: string
+  /** Log function (default: console.log) */
+  log?: (msg: string) => void
+}
 
 type PageRole = {
   dirName: string
@@ -23,22 +28,45 @@ type PageRole = {
 }
 
 type PageRoleResult = PageRole & {
-  viewportDiffs: Record<number, ViewportDiffResult & { hasBeforeHtml: boolean, hasAfterHtml: boolean }>
+  viewportDiffs: Record<number, ViewportDiffResult & { hasBeforeHtml: boolean; hasAfterHtml: boolean }>
 }
 
-function findPageRoleDirs(phaseDir: string): PageRole[] {
+export type CompareResult = {
+  pages: PageRoleResult[]
+  reportDataPath: string
+}
+
+/**
+ * Auto-detect viewport widths from manifest files in a directory.
+ */
+function detectViewports(phaseDir: string): number[] {
+  const widths = new Set<number>()
+  if (!existsSync(phaseDir)) return []
+  for (const entry of readdirSync(phaseDir)) {
+    if (entry.startsWith('_') || entry.startsWith('.')) continue
+    const fullPath = join(phaseDir, entry)
+    if (!statSync(fullPath).isDirectory()) continue
+    for (const file of readdirSync(fullPath)) {
+      const match = file.match(/^dom-manifest-(\d+)\.json$/)
+      if (match) widths.add(parseInt(match[1]))
+    }
+  }
+  return [...widths].sort((a, b) => b - a)
+}
+
+function findPageRoleDirs(phaseDir: string, viewports: number[]): PageRole[] {
   if (!existsSync(phaseDir)) return []
   const results: PageRole[] = []
   for (const entry of readdirSync(phaseDir)) {
     if (entry.startsWith('_') || entry.startsWith('.')) continue
     const fullPath = join(phaseDir, entry)
     if (!statSync(fullPath).isDirectory()) continue
-    const hasManifest = VIEWPORTS.some(w => existsSync(join(fullPath, `dom-manifest-${w}.json`)))
+    const hasManifest = viewports.some(w => existsSync(join(fullPath, `dom-manifest-${w}.json`)))
     if (!hasManifest) continue
 
     const dashIdx = entry.lastIndexOf('--')
     const page = dashIdx !== -1 ? entry.slice(0, dashIdx) : entry
-    const role = dashIdx !== -1 ? entry.slice(dashIdx + 2) : 'unknown'
+    const role = dashIdx !== -1 ? entry.slice(dashIdx + 2) : 'default'
     results.push({ dirName: entry, page, role })
   }
   return results
@@ -52,39 +80,80 @@ function loadManifest(phaseDir: string, dirName: string, width: number): DomMani
 
 // ─── Inject highlight script into HTML captures ─────────────────────
 
-const HIGHLIGHT_SCRIPT_SRC = readFileSync(join(__dirname, 'report', 'highlight-listener.js'), 'utf-8')
-const HIGHLIGHT_SCRIPT = `<script data-vr-injected>\n${HIGHLIGHT_SCRIPT_SRC}\n</script>`
+function getHighlightScript(): string {
+  // Try to load from the report directory; this file is part of the diffinity package
+  const possiblePaths = [
+    join(_dirname, 'report', 'highlight-listener.js'),
+    join(_dirname, '..', 'src', 'report', 'highlight-listener.js'),
+  ]
+  for (const p of possiblePaths) {
+    if (existsSync(p)) {
+      const src = readFileSync(p, 'utf-8')
+      return `<script data-vr-injected>\n${src}\n</script>`
+    }
+  }
+  return ''
+}
 
-function injectHighlightScript(results: PageRoleResult[]) {
+// __dirname for both ESM and CJS
+import { dirname } from 'path'
+import { fileURLToPath } from 'url'
+const _dirname = typeof __dirname !== 'undefined'
+  ? __dirname
+  : dirname(fileURLToPath(import.meta.url))
+
+function injectHighlightScript(results: PageRoleResult[], beforeDir: string, afterDir: string, viewports: number[]) {
+  const highlightScript = getHighlightScript()
+  if (!highlightScript) return
+
   for (const r of results) {
     for (const phase of ['before', 'after'] as const) {
-      for (const width of VIEWPORTS) {
-        const htmlPath = join(screenshotDir, phase, r.dirName, `html-${width}`, 'index.html')
+      const phaseDir = phase === 'before' ? beforeDir : afterDir
+      for (const width of viewports) {
+        const htmlPath = join(phaseDir, r.dirName, `html-${width}`, 'index.html')
         if (!existsSync(htmlPath)) continue
         let content = readFileSync(htmlPath, 'utf-8')
         content = content.replace(/<script data-vr-injected[^>]*>[\s\S]*?<\/script>/g, '')
         content = content.replace(/<style data-vr-capture-only[^>]*>[\s\S]*?<\/style>/g, '')
-        content = content.replace(/\s*\*,\s*\*::before,\s*\*::after\s*\{[^}]*transition-duration:\s*0s\s*!important[^}]*\}\s*body\s*>\s*div\[style\*="position"\]\[style\*="fixed"\],\s*div:has\(>\s*\[aria-label\*="React Hook Form"\]\)\s*\{[^}]*\}/g, '')
         const lastBody = content.lastIndexOf('</body>')
-        if (lastBody !== -1) content = content.slice(0, lastBody) + HIGHLIGHT_SCRIPT + content.slice(lastBody)
+        if (lastBody !== -1) content = content.slice(0, lastBody) + highlightScript + content.slice(lastBody)
         writeFileSync(htmlPath, content)
       }
     }
   }
 }
 
-// ─── Main ────────────────────────────────────────────────────────────
+// ─── Main comparison function ───────────────────────────────────────
 
-function main() {
-  console.log('Visual Regression v2 — Semantic Diff Report')
-  console.log('============================================\n')
+/**
+ * Compare before/ and after/ capture directories and generate report data.
+ *
+ * Runs the full match → diff → consolidate → cascade pipeline per viewport,
+ * injects highlight scripts into HTML captures, and writes report-data.js.
+ */
+export function compareDirs(options: ComparePageOptions): CompareResult {
+  const { beforeDir, afterDir } = options
+  const log = options.log ?? console.log
 
-  const beforePages = findPageRoleDirs(beforeDir)
-  const afterPages = findPageRoleDirs(afterDir)
+  // Auto-detect viewports if not specified
+  const viewports = options.widths ?? [
+    ...new Set([...detectViewports(beforeDir), ...detectViewports(afterDir)]),
+  ].sort((a, b) => b - a)
+
+  if (viewports.length === 0) {
+    throw new Error('No viewport manifests found in before/ or after/ directories')
+  }
+
+  const reportDir = options.reportDir ?? join(beforeDir, '..')
+
+  log('Diffinity — Semantic Diff Comparison')
+  log(`Viewports: ${viewports.join(', ')}px`)
+
+  const beforePages = findPageRoleDirs(beforeDir, viewports)
+  const afterPages = findPageRoleDirs(afterDir, viewports)
 
   if (beforePages.length === 0 && afterPages.length === 0) {
-    console.error('No page directories with per-viewport dom-manifest files found in before/ or after/')
-    process.exit(1)
+    throw new Error('No page directories with dom-manifest files found in before/ or after/')
   }
 
   const allDirNames = new Set([
@@ -102,8 +171,8 @@ function main() {
   for (const dirName of allDirNames) {
     const pr = pageRoleMap.get(dirName)!
 
-    const viewportManifests: Record<number, { before: DomManifest | null, after: DomManifest | null }> = {}
-    for (const width of VIEWPORTS) {
+    const viewportManifests: Record<number, { before: DomManifest | null; after: DomManifest | null }> = {}
+    for (const width of viewports) {
       viewportManifests[width] = {
         before: loadManifest(beforeDir, dirName, width),
         after: loadManifest(afterDir, dirName, width),
@@ -113,7 +182,7 @@ function main() {
     const vpDiffs = diffManifestsByViewport(viewportManifests)
 
     const viewportDiffs: PageRoleResult['viewportDiffs'] = {}
-    for (const width of VIEWPORTS) {
+    for (const width of viewports) {
       viewportDiffs[width] = {
         ...vpDiffs[width],
         hasBeforeHtml: existsSync(join(beforeDir, dirName, `html-${width}`, 'index.html')),
@@ -124,7 +193,7 @@ function main() {
     results.push({ ...pr, viewportDiffs })
 
     // Log summary for the primary viewport
-    const primaryVp = VIEWPORTS[0]
+    const primaryVp = viewports[0]
     const s = viewportDiffs[primaryVp].summary
     const hasBefore = viewportManifests[primaryVp].before
     const hasAfter = viewportManifests[primaryVp].after
@@ -135,15 +204,15 @@ function main() {
       : s.totalChanges < 20 ? 'CHANGED'
       : 'SIGNIFICANT'
 
-    const vpSummaries = VIEWPORTS.map(w => {
+    const vpSummaries = viewports.map(w => {
       const vs = viewportDiffs[w].summary
       return `${w}:${vs.totalChanges}`
     }).join(' ')
 
-    console.log(`  ${dirName}: ${status} (${vpSummaries})`)
+    log(`  ${dirName}: ${status} (${vpSummaries})`)
   }
 
-  injectHighlightScript(results)
+  injectHighlightScript(results, beforeDir, afterDir, viewports)
 
   const reportData = results.map(r => ({
     dirName: r.dirName,
@@ -153,15 +222,15 @@ function main() {
   }))
 
   const vrData = {
-    viewports: VIEWPORTS,
+    viewports,
     pages: reportData,
   }
+
+  mkdirSync(reportDir, { recursive: true })
   const dataJs = `window.VR_DATA = ${JSON.stringify(vrData)};`
-  const dataPath = join(screenshotDir, 'report-data.js')
+  const dataPath = join(reportDir, 'report-data.js')
   writeFileSync(dataPath, dataJs)
-  console.log(`\nData: ${dataPath}`)
+  log(`\nReport data: ${dataPath}`)
 
-  console.log(`Report: ${join(screenshotDir, 'report_v2.html')}`)
+  return { pages: results, reportDataPath: dataPath }
 }
-
-main()
