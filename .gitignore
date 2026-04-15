@@ -10,6 +10,7 @@ screenshots/report-data.js
 .beads/
 .claude/
 .runtime/
+CLAUDE.md
 
 # OS
 .DS_Store
