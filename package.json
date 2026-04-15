@@ -18,6 +18,9 @@
       }
     }
   },
+  "bin": {
+    "diffinity": "./dist/cli.js"
+  },
   "files": [
     "dist"
   ],
