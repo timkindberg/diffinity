@@ -1,36 +1,57 @@
 {
-  "name": "vndly-visual-regression",
-  "version": "1.0.0",
-  "private": true,
-  "description": "Visual regression capture, semantic diffing, and interactive report for VNDLY Canvas rebrand",
+  "name": "diffinity",
+  "version": "0.1.0",
+  "description": "Semantic DOM diffing engine — capture, compare, and report visual regressions",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "setup-users": "npx tsx src/setup-users.ts",
-    "clean": "rm -rf screenshots/before screenshots/after screenshots/report-data.js screenshots/report_v2.html",
-    "clean:before": "rm -rf screenshots/before",
-    "clean:after": "rm -rf screenshots/after",
-    "capture:before": "CAPTURE_PHASE=before time npx tsx src/capture.ts",
-    "capture:after": "CAPTURE_PHASE=after time npx tsx src/capture.ts",
-    "capture:after:faked": "npx tsx src/capture-faked-after.ts",
-    "capture:page": "time npx tsx src/capture.ts --page",
-    "compare": "time npx tsx src/compare-v2.ts",
-    "report": "npm run capture:before && npm run capture:after && npm run compare",
-    "report:faked": "npm run capture:before && npm run capture:after:faked && npm run compare",
-    "sana:report": "bash run-comparison.sh",
+    "build": "tsup && npm run build:report",
+    "build:lib": "tsup",
+    "build:report": "vite build",
+    "dev:report": "vite",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
     "pixelmatch": "^6.0.0",
-    "playwright": "1.57.0",
     "pngjs": "^7.0.0",
-    "purgecss": "^8.0.0",
-    "tsx": "^4.19.0"
+    "purgecss": "^8.0.0"
+  },
+  "peerDependencies": {
+    "playwright": ">=1.40.0"
+  },
+  "peerDependenciesMeta": {
+    "playwright": {
+      "optional": false
+    }
   },
   "devDependencies": {
+    "@preact/preset-vite": "^2.9.0",
     "@types/node": "^22.0.0",
     "@types/pixelmatch": "^5.2.6",
     "@types/pngjs": "^6.0.5",
+    "preact": "^10.25.0",
+    "playwright": "1.57.0",
+    "tsup": "^8.4.0",
     "typescript": "^5.7.0",
+    "vite": "^6.3.0",
     "vitest": "^4.1.2"
   }
 }

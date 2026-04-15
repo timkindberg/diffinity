@@ -6,6 +6,11 @@ screenshots/before/
 screenshots/after/
 screenshots/report-data.js
 
+# Gas Town (polecat runtime)
+.beads/
+.claude/
+.runtime/
+
 # OS
 .DS_Store
 
