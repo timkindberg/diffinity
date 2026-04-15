@@ -5,7 +5,6 @@ dist/
 screenshots/before/
 screenshots/after/
 screenshots/report-data.js
-screenshots/report_v2.html
 
 # OS
 .DS_Store
