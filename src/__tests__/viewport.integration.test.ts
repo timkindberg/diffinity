@@ -176,6 +176,10 @@ describe('Viewport selector', () => {
   })
 
   it('sets iframe height to fill the pane (height / zoom)', async () => {
+    await page.waitForFunction(() => {
+      const iframe = document.querySelector('#pane-before .iframe-wrap iframe') as HTMLIFrameElement | null
+      return iframe?.style.height && parseFloat(iframe.style.height) > 0
+    })
     const result = await page.evaluate(() => {
       const wrap = document.querySelector('#pane-before .iframe-wrap')!
       const iframe = wrap.querySelector('iframe')!
@@ -193,6 +197,11 @@ describe('Viewport selector', () => {
   })
 
   it('recalculates zoom when the browser window is resized', async () => {
+    // Wait for ResizeObserver to apply initial zoom
+    await page.waitForFunction(() => {
+      const iframe = document.querySelector('#pane-before .iframe-wrap iframe') as HTMLIFrameElement | null
+      return iframe?.style.zoom && parseFloat(iframe.style.zoom) > 0
+    })
     // Capture zoom at 1200px wide
     const zoomBefore = await page.evaluate(() => {
       const iframe = document.querySelector('#pane-before .iframe-wrap iframe') as HTMLIFrameElement

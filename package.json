@@ -2,6 +2,20 @@
   "name": "diffinity",
   "version": "0.1.0",
   "description": "Semantic DOM diffing engine — capture, compare, and report visual regressions",
+  "license": "MIT",
+  "author": "Tim Kindberg",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/timkindberg/diffinity.git"
+  },
+  "keywords": [
+    "visual-regression",
+    "dom-diff",
+    "semantic-diff",
+    "playwright",
+    "testing",
+    "snapshot"
+  ],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
