@@ -30,7 +30,8 @@
     "build:report": "vite build && cp src/report/highlight-listener.js dist/report/",
     "dev:report": "vite",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "demo": "npx tsx src/demo.ts"
   },
   "dependencies": {
     "pixelmatch": "^6.0.0",
