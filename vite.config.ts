@@ -36,16 +36,22 @@ function singleFilePlugin(): Plugin {
         },
       )
 
-      // Inline JS <script> tags and strip type="module"
+      // Inline JS: remove the <script type="module"> from <head> and
+      // inject a plain <script> before </body> so the DOM is ready when it runs.
+      // (ES modules are auto-deferred; inline scripts are not, so placement matters.)
+      const scripts: string[] = []
       html = html.replace(
         /<script\s+type="module"\s+crossorigin\s+src="([^"]+)"><\/script>/g,
         (_, src) => {
           const jsPath = join(outDir, src)
-          const js = readFileSync(jsPath, 'utf-8')
+          scripts.push(readFileSync(jsPath, 'utf-8'))
           try { unlinkSync(jsPath) } catch { /* ignore */ }
-          return `<script>${js}</script>`
+          return '' // remove from <head>
         },
       )
+      for (const js of scripts) {
+        html = html.replace('</body>', `<script>${js}</script>\n</body>`)
+      }
 
       writeFileSync(htmlPath, html)
 

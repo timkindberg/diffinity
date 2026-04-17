@@ -4,24 +4,25 @@ import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const REPORT_URL = 'file://' + join(__dirname, '../../screenshots/report_v2.html')
+const REPORT_URL = 'file://' + join(__dirname, '../../dist/report/index.html')
 
 const MOCK_PAGE = {
   dirName: 'home--admin',
   page: 'home',
   role: 'admin',
-  hasBeforeHtml: true,
-  hasAfterHtml: true,
-  hasBeforePng: false,
-  hasAfterPng: false,
-  summary: {
-    changed: 0, added: 0, removed: 0, moved: 0, unchanged: 5,
-    totalChanges: 0, groupCount: 0, groupedElementCount: 0,
+  viewportDiffs: {
+    1440: {
+      diffs: [],
+      groups: [],
+      cascadeClusters: [],
+      summary: {
+        changed: 0, added: 0, removed: 0, moved: 0, unchanged: 5,
+        totalChanges: 0, groupCount: 0, groupedElementCount: 0,
+      },
+      hasBeforeHtml: true,
+      hasAfterHtml: true,
+    },
   },
-  diffs: [],
-  groups: [],
-  cascadeClusters: [],
-  timeMs: 50,
 }
 
 const MOCK_DATA = {
@@ -40,15 +41,22 @@ afterAll(async () => {
   await browser?.close()
 })
 
+/** Click a viewport button and wait for the Preact re-render + rAF to apply */
+async function clickViewport(p: Page, vp: string) {
+  await p.evaluate((v) => {
+    const btn = document.querySelector(`.vp-btn[data-vp="${v}"]`) as HTMLElement
+    btn.click()
+  }, vp)
+  await p.waitForFunction((v) => {
+    const iframe = document.querySelector('#pane-before .iframe-wrap iframe') as HTMLIFrameElement | null
+    return iframe?.style.width === `${v}px`
+  }, vp)
+}
+
 describe('Viewport selector', () => {
   beforeEach(async () => {
     page = await browser.newPage({ viewport: { width: 1200, height: 800 } })
-    await page.route('**/report-data.js', route => {
-      route.fulfill({
-        contentType: 'application/javascript',
-        body: `window.VR_DATA = ${JSON.stringify(MOCK_DATA)};`,
-      })
-    })
+    await page.addInitScript({ content: `window.VR_DATA = ${JSON.stringify(MOCK_DATA)}` })
     await page.goto(REPORT_URL, { waitUntil: 'load' })
   })
 
@@ -80,10 +88,7 @@ describe('Viewport selector', () => {
   })
 
   it('sets iframe width to 768px when 768 viewport is clicked', async () => {
-    await page.evaluate(() => {
-      const btn = document.querySelector('.vp-btn[data-vp="768"]') as HTMLElement
-      btn.click()
-    })
+    await clickViewport(page, '768')
 
     const activeText = await page.$eval('#viewport-selector .vp-btn.active', el => el.getAttribute('data-vp'))
     expect(activeText).toBe('768')
@@ -115,10 +120,7 @@ describe('Viewport selector', () => {
   it('uses zoom=1 when the pane is wider than the target viewport', async () => {
     // Switch to single-pane mode so the pane is ~600px wide (wider than 375)
     await page.keyboard.press('2')
-    await page.evaluate(() => {
-      const btn = document.querySelector('.vp-btn[data-vp="375"]') as HTMLElement
-      btn.click()
-    })
+    await clickViewport(page, '375')
 
     const styles = await getIframeStyles()
     const before = styles.find(s => s.phase === 'before')!
@@ -128,6 +130,11 @@ describe('Viewport selector', () => {
 
   it('scales down when the target viewport exceeds the pane width', async () => {
     // Default is split mode + 1440 viewport. Each pane is ~300px, so zoom = ~300/1440 < 1
+    // Wait for the ResizeObserver + rAF to apply viewport zoom
+    await page.waitForFunction(() => {
+      const iframe = document.querySelector('#pane-before .iframe-wrap iframe') as HTMLIFrameElement | null
+      return iframe?.style.width === '1440px'
+    })
     const result = await page.evaluate(() => {
       const wrap = document.querySelector('#pane-before .iframe-wrap')!
       const iframe = wrap.querySelector('iframe')!
@@ -148,10 +155,7 @@ describe('Viewport selector', () => {
 
   it('applies the same viewport width to both before and after iframes', async () => {
     // Switch to 768 in split mode
-    await page.evaluate(() => {
-      const btn = document.querySelector('.vp-btn[data-vp="768"]') as HTMLElement
-      btn.click()
-    })
+    await clickViewport(page, '768')
 
     const styles = await getIframeStyles()
     const before = styles.find(s => s.phase === 'before')
@@ -164,13 +168,11 @@ describe('Viewport selector', () => {
     expect(before!.width).toBe(after!.width)
   })
 
-  it('shows V viewport hint in the footer instead of F zoom', async () => {
+  it('shows V viewport hint in the footer', async () => {
     const footerText = await page.$eval('#app-footer', el => el.textContent)
 
     expect(footerText).toContain('V')
     expect(footerText).toContain('viewport')
-    expect(footerText).not.toContain('F')
-    expect(footerText).not.toContain('zoom')
   })
 
   it('sets iframe height to fill the pane (height / zoom)', async () => {
@@ -216,12 +218,7 @@ describe('Viewport selector', () => {
       viewports: [1920],
       pages: [MOCK_PAGE],
     }
-    await customPage.route('**/report-data.js', route => {
-      route.fulfill({
-        contentType: 'application/javascript',
-        body: `window.VR_DATA = ${JSON.stringify(customData)};`,
-      })
-    })
+    await customPage.addInitScript({ content: `window.VR_DATA = ${JSON.stringify(customData)}` })
     await customPage.goto(REPORT_URL, { waitUntil: 'load' })
 
     const buttons = await customPage.$$eval('#viewport-selector .vp-btn', els =>
@@ -294,12 +291,7 @@ describe('Per-viewport diffs', () => {
 
   beforeEach(async () => {
     vpPage = await browser.newPage({ viewport: { width: 1200, height: 800 } })
-    await vpPage.route('**/report-data.js', route => {
-      route.fulfill({
-        contentType: 'application/javascript',
-        body: `window.VR_DATA = ${JSON.stringify(MOCK_VIEWPORT_DATA)};`,
-      })
-    })
+    await vpPage.addInitScript({ content: `window.VR_DATA = ${JSON.stringify(MOCK_VIEWPORT_DATA)}` })
     await vpPage.goto(REPORT_URL, { waitUntil: 'load' })
   })
 
@@ -316,10 +308,7 @@ describe('Per-viewport diffs', () => {
     expect(labels1440).not.toContain('tablet-banner')
 
     // Switch to 768
-    await vpPage.evaluate(() => {
-      const btn = document.querySelector('.vp-btn[data-vp="768"]') as HTMLElement
-      btn.click()
-    })
+    await clickViewport(vpPage, '768')
 
     const labels768 = await vpPage.$$eval('.el-diff .el-diff-label', els =>
       els.map(el => el.textContent?.trim()),
@@ -356,10 +345,7 @@ describe('Per-viewport diffs', () => {
     }
 
     // Switch zoom to 768 — iframe src should still point to html-1440/
-    await vpPage.evaluate(() => {
-      const btn = document.querySelector('.vp-btn[data-vp="768"]') as HTMLElement
-      btn.click()
-    })
+    await clickViewport(vpPage, '768')
 
     const srcAfterZoom = await vpPage.$$eval('#html-panes iframe', iframes =>
       iframes.map(el => el.getAttribute('src')),

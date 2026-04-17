@@ -73,6 +73,7 @@ export function Viewer({ pages, selected, viewMode, activeViewport, dataViewport
               <button
                 key={vp}
                 class={`mode-btn vp-btn${activeViewport === vp ? ' active' : ''}`}
+                data-vp={String(vp)}
                 onClick={() => onViewportChange(vp)}
               >
                 {i === 0 && <span class="mode-key">V</span>}
