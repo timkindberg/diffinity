@@ -2,9 +2,6 @@ node_modules/
 dist/
 .env
 .env.*
-screenshots/before/
-screenshots/after/
-screenshots/report-data.js
 
 # Gas Town (polecat runtime)
 .beads/
