@@ -1,0 +1,82 @@
+export type Change = {
+  property: string
+  category: string
+  before?: string
+  after?: string
+}
+
+export type ElementDiffData = {
+  label: string
+  selector?: string
+  type: string
+  importance?: string
+  score: number
+  changes: Change[]
+  beforeIdx?: number
+  afterIdx?: number
+}
+
+export type GroupMember = {
+  label: string
+  beforeIdx?: number
+  afterIdx?: number
+}
+
+export type DiffGroupData = {
+  type: string
+  importance?: string
+  score: number
+  changes: Change[]
+  members: GroupMember[]
+}
+
+export type CascadeClusterData = {
+  delta: string
+  elementCount: number
+  properties: string[]
+  rootCause?: {
+    label: string
+    property: string
+    before: string
+    after: string
+  }
+  members: GroupMember[]
+}
+
+export type DiffSummary = {
+  changed: number
+  added: number
+  removed: number
+  moved: number
+  unchanged: number
+  totalChanges: number
+  groupCount: number
+  groupedElementCount: number
+}
+
+export type ViewportDiffData = {
+  diffs: ElementDiffData[]
+  groups: DiffGroupData[]
+  cascadeClusters: CascadeClusterData[]
+  summary: DiffSummary
+  hasBeforeHtml: boolean
+  hasAfterHtml: boolean
+}
+
+export type PageData = {
+  dirName: string
+  page: string
+  role: string
+  viewportDiffs: Record<number, ViewportDiffData>
+}
+
+export type ReportData = {
+  viewports: number[]
+  pages: PageData[]
+}
+
+/** Unified flat item for keyboard navigation in the diff panel */
+export type FlatItem =
+  | { kind: 'diff'; diff: ElementDiffData }
+  | { kind: 'group'; group: DiffGroupData }
+  | { kind: 'cascade'; cluster: CascadeClusterData }

@@ -27,7 +27,7 @@
   "scripts": {
     "build": "tsup && npm run build:report",
     "build:lib": "tsup",
-    "build:report": "vite build",
+    "build:report": "vite build && cp src/report/highlight-listener.js dist/report/",
     "dev:report": "vite",
     "test": "vitest run",
     "test:watch": "vitest"

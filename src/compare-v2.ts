@@ -34,6 +34,7 @@ type PageRoleResult = PageRole & {
 export type CompareResult = {
   pages: PageRoleResult[]
   reportDataPath: string
+  reportHtmlPath: string
 }
 
 /**
@@ -76,6 +77,30 @@ function loadManifest(phaseDir: string, dirName: string, width: number): DomMani
   const path = join(phaseDir, dirName, `dom-manifest-${width}.json`)
   if (!existsSync(path)) return null
   return JSON.parse(readFileSync(path, 'utf-8'))
+}
+
+// ─── Report template ──────────────────────────────────────────────
+
+function getReportTemplate(): string | null {
+  const possiblePaths = [
+    join(_dirname, 'report', 'index.html'),            // dist/report/index.html (published package)
+    join(_dirname, '..', 'dist', 'report', 'index.html'), // from src/ during development
+  ]
+  for (const p of possiblePaths) {
+    if (existsSync(p)) return readFileSync(p, 'utf-8')
+  }
+  return null
+}
+
+function buildReportHtml(template: string, vrData: object): string {
+  const dataScript = `<script>window.VR_DATA = ${JSON.stringify(vrData)};</script>`
+  // Inject data script before the first <script> tag so it's available when the app boots
+  const firstScript = template.indexOf('<script>')
+  if (firstScript !== -1) {
+    return template.slice(0, firstScript) + dataScript + '\n    ' + template.slice(firstScript)
+  }
+  // Fallback: inject before </head>
+  return template.replace('</head>', dataScript + '\n  </head>')
 }
 
 // ─── Inject highlight script into HTML captures ─────────────────────
@@ -230,7 +255,16 @@ export function compareDirs(options: ComparePageOptions): CompareResult {
   const dataJs = `window.VR_DATA = ${JSON.stringify(vrData)};`
   const dataPath = join(reportDir, 'report-data.js')
   writeFileSync(dataPath, dataJs)
-  log(`\nReport data: ${dataPath}`)
 
-  return { pages: results, reportDataPath: dataPath }
+  // Build self-contained report HTML with embedded data
+  const reportHtmlPath = join(reportDir, 'index.html')
+  const template = getReportTemplate()
+  if (template) {
+    writeFileSync(reportHtmlPath, buildReportHtml(template, vrData))
+    log(`\nReport: ${reportHtmlPath}`)
+  } else {
+    log(`\nReport data: ${dataPath} (report template not found — run "npm run build:report")`)
+  }
+
+  return { pages: results, reportDataPath: dataPath, reportHtmlPath }
 }
