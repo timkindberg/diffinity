@@ -8,7 +8,7 @@
  * and outputs a single multi-page report at demo/index.html.
  */
 import { chromium } from 'playwright'
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'fs'
+import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { captureDomManifest } from './dom-manifest.js'
@@ -144,6 +144,34 @@ async function main() {
   }
 
   await browser.close()
+
+  // Inject highlight-listener.js into all captured HTML files
+  // (required for file:// protocol where contentDocument is null cross-origin)
+  const listenerPaths = [
+    join(_dirname, '..', 'dist', 'report', 'highlight-listener.js'),
+    join(_dirname, 'report', 'highlight-listener.js'),
+  ]
+  const listenerSrc = listenerPaths.reduce<string | null>((found, p) =>
+    found ?? (existsSync(p) ? readFileSync(p, 'utf-8') : null), null)
+
+  if (listenerSrc) {
+    const scriptTag = `<script data-vr-injected>\n${listenerSrc}\n</script>`
+    for (const phaseDir of [beforeDir, afterDir]) {
+      if (!existsSync(phaseDir)) continue
+      for (const pageDir of readdirSync(phaseDir)) {
+        const htmlDir = join(phaseDir, pageDir, `html-${VIEWPORT_WIDTH}`)
+        const htmlPath = join(htmlDir, 'index.html')
+        if (!existsSync(htmlPath)) continue
+        let content = readFileSync(htmlPath, 'utf-8')
+        const lastBody = content.lastIndexOf('</body>')
+        if (lastBody !== -1) {
+          content = content.slice(0, lastBody) + scriptTag + content.slice(lastBody)
+          writeFileSync(htmlPath, content)
+        }
+      }
+    }
+    console.log('Highlight listener injected into captured HTML files')
+  }
 
   // Build report
   mkdirSync(DEMO_DIR, { recursive: true })
