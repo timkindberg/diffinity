@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'preact/hooks'
+import { useEffect, useRef, useCallback } from 'preact/hooks'
 import type { PageData, ViewportDiffData } from './types'
+import highlightListenerSrc from './highlight-listener.js?raw'
 
 type ViewMode = 'split' | 'before' | 'after'
 
@@ -114,9 +115,19 @@ function IframePane({ item, phase, alignCls, dataViewports }: {
 }) {
   const htmlDir = `html-${dataViewports[0]}`
   const src = `${phase}/${item.dirName}/${htmlDir}/index.html`
+  const onLoad = useCallback((e: Event) => {
+    const iframe = e.target as HTMLIFrameElement
+    try {
+      const doc = iframe.contentDocument
+      if (!doc) return
+      const script = doc.createElement('script')
+      script.textContent = highlightListenerSrc
+      doc.body.appendChild(script)
+    } catch { /* cross-origin ignore */ }
+  }, [])
   return (
     <div class={`iframe-wrap ${alignCls}`}>
-      <iframe src={src} data-phase={phase} />
+      <iframe src={src} data-phase={phase} onLoad={onLoad} />
     </div>
   )
 }
