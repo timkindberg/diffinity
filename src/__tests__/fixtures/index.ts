@@ -1542,13 +1542,392 @@ const s39: TestSection = {
   ],
 }
 
+// Section 40: CSS Transforms
+const s40: TestSection = {
+  name: 'CSS transforms',
+  cases: [
+    (() => {
+      const html = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .box { width: 100px; height: 100px; background: #3b82f6; transform: scale(1); }
+    </style></head><body>
+      <div class="box" data-testid="box">Scaled</div>
+    </body></html>`
+      return {
+        name: 'transform scale change',
+        before: html,
+        after: html.replace('transform: scale(1)', 'transform: scale(1.5)'),
+      }
+    })(),
+    (() => {
+      const html = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .icon { width: 48px; height: 48px; background: #ef4444; transform: rotate(0deg); }
+    </style></head><body>
+      <div class="icon" data-testid="icon">R</div>
+    </body></html>`
+      return {
+        name: 'transform rotate change',
+        before: html,
+        after: html.replace('transform: rotate(0deg)', 'transform: rotate(45deg)'),
+      }
+    })(),
+    (() => {
+      const html = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .slide { width: 200px; height: 50px; background: #10b981; transform: translateX(0); }
+    </style></head><body>
+      <div class="slide" data-testid="slide">Translated</div>
+    </body></html>`
+      return {
+        name: 'transform translate change',
+        before: html,
+        after: html.replace('transform: translateX(0)', 'transform: translateX(20px)'),
+      }
+    })(),
+  ],
+}
+
+// Section 41: Box-shadow Elevation
+const s41: TestSection = {
+  name: 'Box-shadow elevation',
+  cases: [
+    (() => {
+      const html = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .card { width: 300px; padding: 16px; background: white; border: 1px solid #e5e7eb; }
+    </style></head><body>
+      <div class="card" data-testid="card">Flat card</div>
+    </body></html>`
+      return {
+        name: 'flat to elevated (shadow added)',
+        before: html,
+        after: html.replace(
+          'border: 1px solid #e5e7eb; }',
+          'border: 1px solid #e5e7eb; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1); }',
+        ),
+      }
+    })(),
+    (() => {
+      const html = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .card { width: 300px; padding: 16px; background: white;
+              box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+    </style></head><body>
+      <div class="card" data-testid="card">Card</div>
+    </body></html>`
+      return {
+        name: 'shadow intensity increase',
+        before: html,
+        after: html.replace(
+          'box-shadow: 0 1px 2px rgba(0,0,0,0.05)',
+          'box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1)',
+        ),
+      }
+    })(),
+  ],
+}
+
+// Section 42: Z-index Stacking
+const s42: TestSection = {
+  name: 'Z-index stacking',
+  cases: [
+    (() => {
+      const html = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .overlay { position: relative; z-index: 1; width: 200px; height: 100px;
+                 background: #818cf8; color: white; padding: 8px; }
+    </style></head><body>
+      <div class="overlay" data-testid="overlay">Overlay</div>
+    </body></html>`
+      return {
+        name: 'z-index change on positioned element',
+        before: html,
+        after: html.replace('z-index: 1', 'z-index: 50'),
+      }
+    })(),
+  ],
+}
+
+// Section 43: Overflow Changes
+const s43: TestSection = {
+  name: 'Overflow changes',
+  cases: [
+    (() => {
+      const html = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .container { width: 200px; height: 100px; overflow: hidden; background: #f3f4f6; padding: 8px; }
+      .long { width: 300px; }
+    </style></head><body>
+      <div class="container" data-testid="container">
+        <div class="long" data-testid="content">This content is wider than its container</div>
+      </div>
+    </body></html>`
+      return {
+        name: 'overflow hidden to visible',
+        before: html,
+        after: html.replace('overflow: hidden', 'overflow: visible'),
+      }
+    })(),
+    (() => {
+      const html = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .container { width: 200px; height: 100px; overflow: visible; background: #f3f4f6; padding: 8px; }
+    </style></head><body>
+      <div class="container" data-testid="container">
+        <p>Content here</p>
+      </div>
+    </body></html>`
+      return {
+        name: 'overflow visible to hidden',
+        before: html,
+        after: html.replace('overflow: visible', 'overflow: hidden'),
+      }
+    })(),
+  ],
+}
+
+// Section 44: Flex/Grid Sub-properties
+const s44: TestSection = {
+  name: 'Flex and grid sub-properties',
+  cases: [
+    (() => {
+      const html = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .row { display: flex; justify-content: flex-start; padding: 8px; background: #f3f4f6; }
+      .item { width: 60px; height: 40px; background: #6366f1; margin: 4px; }
+    </style></head><body>
+      <div class="row" data-testid="row">
+        <div class="item">A</div><div class="item">B</div><div class="item">C</div>
+      </div>
+    </body></html>`
+      return {
+        name: 'justify-content change',
+        before: html,
+        after: html.replace('justify-content: flex-start', 'justify-content: space-between'),
+      }
+    })(),
+    (() => {
+      const html = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .row { display: flex; align-items: flex-start; height: 120px; background: #f3f4f6; padding: 8px; }
+      .item { width: 60px; height: 40px; background: #6366f1; margin: 4px; }
+    </style></head><body>
+      <div class="row" data-testid="row">
+        <div class="item">A</div><div class="item">B</div>
+      </div>
+    </body></html>`
+      return {
+        name: 'align-items change',
+        before: html,
+        after: html.replace('align-items: flex-start', 'align-items: center'),
+      }
+    })(),
+    (() => {
+      const html = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px; }
+      .cell { background: #dbeafe; padding: 12px; }
+    </style></head><body>
+      <div class="grid" data-testid="grid">
+        <div class="cell">A</div><div class="cell">B</div>
+        <div class="cell">C</div><div class="cell">D</div>
+      </div>
+    </body></html>`
+      return {
+        name: 'grid-template-columns change',
+        before: html,
+        after: html.replace('grid-template-columns: 1fr 1fr', 'grid-template-columns: 2fr 1fr'),
+      }
+    })(),
+  ],
+}
+
+// Section 45: SVG Changes
+const s45: TestSection = {
+  name: 'SVG changes',
+  cases: [
+    (() => {
+      // SVG fill/stroke attributes are not tracked CSS properties.
+      // Test icon swap via wrapper color change + size change.
+      const before = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .icon-wrap { color: #3b82f6; display: inline-block; }
+    </style></head><body>
+      <span class="icon-wrap" data-testid="icon-wrap">
+        <svg data-testid="icon" width="24" height="24" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10" />
+        </svg>
+      </span>
+    </body></html>`
+      const after = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .icon-wrap { color: #ef4444; display: inline-block; }
+    </style></head><body>
+      <span class="icon-wrap" data-testid="icon-wrap">
+        <svg data-testid="icon" width="24" height="24" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10" />
+        </svg>
+      </span>
+    </body></html>`
+      return {
+        name: 'SVG wrapper color change',
+        before,
+        after,
+      }
+    })(),
+    (() => {
+      const beforeHtml = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+    </style></head><body>
+      <svg data-testid="icon" width="24" height="24" viewBox="0 0 24 24">
+        <path d="M12 2L2 22h20L12 2z" fill="#f59e0b" data-testid="shape" />
+      </svg>
+    </body></html>`
+      const afterHtml = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+    </style></head><body>
+      <svg data-testid="icon" width="24" height="24" viewBox="0 0 24 24">
+        <rect x="2" y="2" width="20" height="20" rx="4" fill="#f59e0b" data-testid="shape" />
+      </svg>
+    </body></html>`
+      return {
+        name: 'SVG shape swap (triangle to rounded rect)',
+        before: beforeHtml,
+        after: afterHtml,
+      }
+    })(),
+  ],
+}
+
+// Section 46: CSS Variable Cascade
+const s46: TestSection = {
+  name: 'CSS variable cascade',
+  cases: [
+    (() => {
+      const html = `<!DOCTYPE html><html><head><style>
+      :root { --primary: #3b82f6; --text: #1f2937; }
+      body { margin: 0; font-family: sans-serif; }
+      .header { background: var(--primary); color: white; padding: 12px 24px; }
+      .btn { background: var(--primary); color: white; padding: 8px 16px; border: none; border-radius: 4px; }
+      .link { color: var(--primary); }
+      .badge { display: inline-block; padding: 2px 8px; border: 1px solid var(--primary);
+               color: var(--primary); border-radius: 12px; font-size: 12px; }
+    </style></head><body>
+      <div class="header" data-testid="header">App Title</div>
+      <p><a class="link" href="#" data-testid="link">Learn more</a></p>
+      <button class="btn" data-testid="btn">Action</button>
+      <span class="badge" data-testid="badge">New</span>
+    </body></html>`
+      return {
+        name: 'CSS variable change cascades to multiple children',
+        before: html,
+        after: html.replace('--primary: #3b82f6', '--primary: #8b5cf6'),
+      }
+    })(),
+  ],
+}
+
+// Section 47: False-positive Resistance
+const s47: TestSection = {
+  name: 'False-positive resistance',
+  cases: [
+    (() => {
+      // Sub-pixel differences: parent padding change so small that child bbox
+      // shifts by <1px. If rounding is consistent, no diffs should appear.
+      const html = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .wrap { padding: 10px; }
+      .child { width: 100px; height: 50px; background: #eee; }
+    </style></head><body>
+      <div class="wrap" data-testid="wrap">
+        <div class="child" data-testid="child">Content</div>
+      </div>
+    </body></html>`
+      return {
+        name: 'identical re-render produces zero diffs',
+        before: html,
+        after: html,
+      }
+    })(),
+    (() => {
+      // Whitespace-only text difference: browsers collapse whitespace in rendering,
+      // so "Hello" and "  Hello  " should render identically.
+      const before = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      p { font-size: 14px; color: #333; }
+    </style></head><body>
+      <p data-testid="text">Hello World</p>
+    </body></html>`
+      const after = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      p { font-size: 14px; color: #333; }
+    </style></head><body>
+      <p data-testid="text">  Hello World  </p>
+    </body></html>`
+      return {
+        name: 'whitespace-only text difference (should suppress)',
+        before,
+        after,
+      }
+    })(),
+    (() => {
+      // Explicit value matches inherited default: child sets color explicitly
+      // to the same value it would inherit. No visual difference.
+      const before = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; color: #333; }
+      .child { font-size: 14px; }
+    </style></head><body>
+      <div data-testid="parent">
+        <span class="child" data-testid="child">Text</span>
+      </div>
+    </body></html>`
+      const after = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; color: #333; }
+      .child { font-size: 14px; color: #333; }
+    </style></head><body>
+      <div data-testid="parent">
+        <span class="child" data-testid="child">Text</span>
+      </div>
+    </body></html>`
+      return {
+        name: 'explicit value matches inherited default (no visual diff)',
+        before,
+        after,
+      }
+    })(),
+    (() => {
+      // Browser-defaulted property: setting a property to the browser's default
+      // value should not produce a diff vs. not setting it at all.
+      const before = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .box { width: 200px; height: 100px; background: #eee; }
+    </style></head><body>
+      <div class="box" data-testid="box">Content</div>
+    </body></html>`
+      const after = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .box { width: 200px; height: 100px; background: #eee; visibility: visible; opacity: 1; }
+    </style></head><body>
+      <div class="box" data-testid="box">Content</div>
+    </body></html>`
+      return {
+        name: 'browser-defaulted properties (visibility/opacity at defaults)',
+        before,
+        after,
+      }
+    })(),
+  ],
+}
+
 // ─── Exported sections array ────────────────────────────────────────
 
 export const sections: TestSection[] = [
   s01, s02, s03, s04, s05, s06, s07, s08, s09, s10,
   s11, s12, s13, s14, s15, s16, s17, s18, s19, s20,
   s21, s22, s23, s24, s25, s26, s27, s28, s29, s30,
-  s31, s32, s33, s34, s35, s36, s37, s38, s39,
+  s31, s32, s33, s34, s35, s36, s37, s38, s39, s40,
+  s41, s42, s43, s44, s45, s46, s47,
 ]
 
 /** Lookup helper: find a section by name */

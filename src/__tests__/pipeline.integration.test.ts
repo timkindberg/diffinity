@@ -1263,3 +1263,224 @@ describe('Multi-viewport diffing', () => {
     }
   })
 })
+
+// =====================================================================
+// Section 40: CSS Transforms
+// =====================================================================
+
+describe('CSS transforms', () => {
+  it('detects transform scale change', async () => {
+    const { before, after } = f('CSS transforms', 'transform scale change')
+    const r = await diffHtml(before, after)
+
+    // Browsers compute scale(1) as identity matrix and scale(1.5) as a matrix
+    const transformChanges = allChanges(r).filter(c => c.property === 'transform')
+    expect(transformChanges).toHaveLength(1)
+  })
+
+  it('detects transform rotate change', async () => {
+    const { before, after } = f('CSS transforms', 'transform rotate change')
+    const r = await diffHtml(before, after)
+
+    const transformChanges = allChanges(r).filter(c => c.property === 'transform')
+    expect(transformChanges).toHaveLength(1)
+  })
+
+  it('detects transform translate change', async () => {
+    const { before, after } = f('CSS transforms', 'transform translate change')
+    const r = await diffHtml(before, after)
+
+    const transformChanges = allChanges(r).filter(c => c.property === 'transform')
+    expect(transformChanges).toHaveLength(1)
+  })
+})
+
+// =====================================================================
+// Section 41: Box-shadow Elevation
+// =====================================================================
+
+describe('Box-shadow elevation', () => {
+  it('detects flat to elevated (shadow added)', async () => {
+    const { before, after } = f('Box-shadow elevation', 'flat to elevated (shadow added)')
+    const r = await diffHtml(before, after)
+
+    const shadowChanges = allChanges(r).filter(c => c.property === 'box-shadow')
+    expect(shadowChanges).toHaveLength(1)
+  })
+
+  it('detects shadow intensity increase', async () => {
+    const { before, after } = f('Box-shadow elevation', 'shadow intensity increase')
+    const r = await diffHtml(before, after)
+
+    const shadowChanges = allChanges(r).filter(c => c.property === 'box-shadow')
+    expect(shadowChanges).toHaveLength(1)
+  })
+})
+
+// =====================================================================
+// Section 42: Z-index Stacking
+// =====================================================================
+
+describe('Z-index stacking', () => {
+  it('detects z-index change on positioned element (raw, suppressed by consolidation)', async () => {
+    const { before, after } = f('Z-index stacking', 'z-index change on positioned element')
+    const r = await diffHtml(before, after)
+
+    // z-index is in the 'position' category. Consolidation suppresses position-only diffs,
+    // but the raw diff engine detects the change.
+    const rawZChanges = r.raw.diffs.flatMap(d => d.changes).filter(c => c.property === 'z-index')
+    expect(rawZChanges).toHaveLength(1)
+
+    // Consolidation correctly suppresses position-only changes
+    const consolidated = findDiffByLabel(r, 'overlay')
+    expect(consolidated).toBeUndefined()
+  })
+})
+
+// =====================================================================
+// Section 43: Overflow Changes
+// =====================================================================
+
+describe('Overflow changes', () => {
+  it('detects overflow hidden to visible (raw, suppressed by consolidation)', async () => {
+    const { before, after } = f('Overflow changes', 'overflow hidden to visible')
+    const r = await diffHtml(before, after)
+
+    // overflow-x/y are in the 'position' category. Consolidation suppresses
+    // position-only diffs, but the raw diff engine detects the change.
+    const rawOverflow = r.raw.diffs.flatMap(d => d.changes).filter(c =>
+      c.property === 'overflow-x' || c.property === 'overflow-y'
+    )
+    expect(rawOverflow.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('detects overflow visible to hidden (raw, suppressed by consolidation)', async () => {
+    const { before, after } = f('Overflow changes', 'overflow visible to hidden')
+    const r = await diffHtml(before, after)
+
+    const rawOverflow = r.raw.diffs.flatMap(d => d.changes).filter(c =>
+      c.property === 'overflow-x' || c.property === 'overflow-y'
+    )
+    expect(rawOverflow.length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+// =====================================================================
+// Section 44: Flex/Grid Sub-properties
+// =====================================================================
+
+describe('Flex and grid sub-properties', () => {
+  it('detects justify-content change', async () => {
+    const { before, after } = f('Flex and grid sub-properties', 'justify-content change')
+    const r = await diffHtml(before, after)
+
+    const jcChanges = allChanges(r).filter(c => c.property === 'justify-content')
+    expect(jcChanges).toHaveLength(1)
+  })
+
+  it('detects align-items change', async () => {
+    const { before, after } = f('Flex and grid sub-properties', 'align-items change')
+    const r = await diffHtml(before, after)
+
+    const aiChanges = allChanges(r).filter(c => c.property === 'align-items')
+    expect(aiChanges).toHaveLength(1)
+  })
+
+  it('detects grid-template-columns change', async () => {
+    const { before, after } = f('Flex and grid sub-properties', 'grid-template-columns change')
+    const r = await diffHtml(before, after)
+
+    const gridChanges = allChanges(r).filter(c => c.property === 'grid-template-columns')
+    expect(gridChanges).toHaveLength(1)
+  })
+})
+
+// =====================================================================
+// Section 45: SVG Changes
+// =====================================================================
+
+describe('SVG changes', () => {
+  it('detects SVG wrapper color change (CSS color on parent)', async () => {
+    const { before, after } = f('SVG changes', 'SVG wrapper color change')
+    const r = await diffHtml(before, after)
+
+    // SVG fill/stroke attributes aren't tracked CSS properties,
+    // but CSS color on a wrapper element IS tracked.
+    const colorChanges = [...allChanges(r), ...allGroupChanges(r)].filter(c =>
+      c.property === 'color' || c.property === 'foreground color'
+    )
+    expect(colorChanges.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('detects SVG shape swap (path → rect)', async () => {
+    const { before, after } = f('SVG changes', 'SVG shape swap (triangle to rounded rect)')
+    const r = await diffHtml(before, after)
+
+    // Shape swap: old path removed, new rect added (structural change)
+    const totalChanges = r.diffs.length + r.groups.length
+    expect(totalChanges).toBeGreaterThanOrEqual(1)
+  })
+})
+
+// =====================================================================
+// Section 46: CSS Variable Cascade
+// =====================================================================
+
+describe('CSS variable cascade', () => {
+  it('detects CSS variable change cascading to multiple children', async () => {
+    const { before, after } = f('CSS variable cascade', 'CSS variable change cascades to multiple children')
+    const r = await diffHtml(before, after)
+
+    // Changing --primary affects header bg, button bg, link color, badge border/color.
+    // Expect multiple elements to show color/background changes.
+    const allColorAndBg = [...allChanges(r), ...allGroupChanges(r)].filter(c =>
+      c.property === 'color' || c.property === 'foreground color' ||
+      c.property === 'background-color' || c.property.includes('border-color')
+    )
+    expect(allColorAndBg.length).toBeGreaterThanOrEqual(3)
+  })
+})
+
+// =====================================================================
+// Section 47: False-positive Resistance
+// =====================================================================
+
+describe('False-positive resistance', () => {
+  it('identical re-render produces zero diffs', async () => {
+    const { before, after } = f('False-positive resistance', 'identical re-render produces zero diffs')
+    const r = await diffHtml(before, after)
+
+    expect(r.diffs).toHaveLength(0)
+    expect(r.groups).toHaveLength(0)
+  })
+
+  it('whitespace-only text difference produces zero diffs (browser collapses whitespace)', async () => {
+    const { before, after } = f('False-positive resistance', 'whitespace-only text difference (should suppress)')
+    const r = await diffHtml(before, after)
+
+    // Browsers collapse whitespace, so rendered text is the same.
+    // The manifest should capture the rendered (collapsed) text, not raw HTML.
+    expect(r.diffs).toHaveLength(0)
+    expect(r.groups).toHaveLength(0)
+  })
+
+  it('explicit value matching inherited default produces zero diffs', async () => {
+    const { before, after } = f('False-positive resistance', 'explicit value matches inherited default (no visual diff)')
+    const r = await diffHtml(before, after)
+
+    // Setting color: #333 explicitly when it would be inherited as #333
+    // should produce the same computed value. No visual diff.
+    expect(r.diffs).toHaveLength(0)
+    expect(r.groups).toHaveLength(0)
+  })
+
+  it('browser-defaulted properties produce zero diffs', async () => {
+    const { before, after } = f('False-positive resistance', 'browser-defaulted properties (visibility/opacity at defaults)')
+    const r = await diffHtml(before, after)
+
+    // visibility:visible and opacity:1 are browser defaults.
+    // Explicitly setting them should produce the same computed values.
+    expect(r.diffs).toHaveLength(0)
+    expect(r.groups).toHaveLength(0)
+  })
+})
