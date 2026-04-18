@@ -12,6 +12,7 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { captureDomManifest } from './dom-manifest.js'
+import { capturePageHtml, type ResponseCache } from './html-capture.js'
 import { matchManifests } from './match.js'
 import { diffManifests, consolidateDiffs } from './diff.js'
 import { buildCascadeClusters } from './cascade-cluster.js'
@@ -69,9 +70,20 @@ async function main() {
   const browser = await chromium.launch()
   const page = await browser.newPage({ viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT } })
 
-  async function captureHtml(html: string): Promise<DomManifest> {
+  const beforeDir = join(DEMO_DIR, 'before')
+  const afterDir = join(DEMO_DIR, 'after')
+  const sharedAssetsDir = join(DEMO_DIR, '_assets')
+  mkdirSync(sharedAssetsDir, { recursive: true })
+
+  async function captureManifestAndHtml(
+    html: string,
+    htmlDir: string,
+  ): Promise<DomManifest> {
     await page.setContent(html, { waitUntil: 'load' })
-    return captureDomManifest(page, noop)
+    const manifest = await captureDomManifest(page, noop)
+    const emptyCache: ResponseCache = new Map()
+    await capturePageHtml(page, emptyCache, htmlDir, sharedAssetsDir, noop)
+    return manifest
   }
 
   const pages: PageData[] = []
@@ -87,8 +99,15 @@ async function main() {
 
       process.stdout.write(`  ${section.name} / ${testCase.name}...`)
 
-      const before = await captureHtml(testCase.before)
-      const after = await captureHtml(testCase.after)
+      const htmlDirName = `html-${VIEWPORT_WIDTH}`
+      const before = await captureManifestAndHtml(
+        testCase.before,
+        join(beforeDir, dirName, htmlDirName),
+      )
+      const after = await captureManifestAndHtml(
+        testCase.after,
+        join(afterDir, dirName, htmlDirName),
+      )
 
       const match = matchManifests(before, after)
       const raw = diffManifests(before, after, match)
@@ -105,8 +124,8 @@ async function main() {
         groups: cascade.remainingGroups,
         cascadeClusters: cascade.clusters,
         summary: consolidated.summary,
-        hasBeforeHtml: false,
-        hasAfterHtml: false,
+        hasBeforeHtml: true,
+        hasAfterHtml: true,
       }
 
       const changeSummary = consolidated.summary.totalChanges
