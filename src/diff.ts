@@ -76,6 +76,7 @@ for (const prop of [
   'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color',
   'border-top-left-radius', 'border-top-right-radius', 'border-bottom-left-radius', 'border-bottom-right-radius',
   'box-sizing',
+  'padding', 'margin',
 ]) STYLE_CATEGORIES[prop] = 'box-model'
 
 for (const prop of [
@@ -408,6 +409,14 @@ const BORDER_STYLE_QUAD = [
   'border-top-style', 'border-right-style',
   'border-bottom-style', 'border-left-style',
 ]
+const PADDING_QUAD = [
+  'padding-top', 'padding-right',
+  'padding-bottom', 'padding-left',
+]
+const MARGIN_QUAD = [
+  'margin-top', 'margin-right',
+  'margin-bottom', 'margin-left',
+]
 
 const FOREGROUND_COLOR_BUNDLE = ['color', 'text-decoration-color', 'outline-color']
 
@@ -428,6 +437,8 @@ export function collapseChanges(changes: Change[]): Change[] {
   result = collapseQuad(result, BORDER_WIDTH_QUAD, 'border-width')
   result = collapseQuad(result, BORDER_COLOR_QUAD, 'border-color')
   result = collapseQuad(result, BORDER_STYLE_QUAD, 'border-style')
+  result = collapseQuad(result, PADDING_QUAD, 'padding')
+  result = collapseQuad(result, MARGIN_QUAD, 'margin')
   result = collapseForegroundColor(result)
   result = collapseCoupledPairs(result)
   return result
