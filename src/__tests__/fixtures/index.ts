@@ -1920,6 +1920,55 @@ const s47: TestSection = {
   ],
 }
 
+// Section 48: Explicit vs Implicit Size Scoring
+const s48: TestSection = {
+  name: 'Explicit vs implicit size scoring',
+  cases: [
+    (() => {
+      const html = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .box { width: 200px; height: 100px; background: #eee; }
+    </style></head><body>
+      <div class="box" data-testid="explicit-box">Content</div>
+    </body></html>`
+      return {
+        name: 'explicit width change scores higher than cascade',
+        before: html,
+        after: html.replace('width: 200px', 'width: 300px'),
+      }
+    })(),
+    (() => {
+      const html = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .parent { width: 500px; padding: 16px; }
+      .child { background: #eee; padding: 8px; }
+    </style></head><body>
+      <div class="parent" data-testid="parent">
+        <div class="child" data-testid="child">Implicit width from parent</div>
+      </div>
+    </body></html>`
+      return {
+        name: 'implicit child width change from parent resize scores low',
+        before: html,
+        after: html.replace('.parent { width: 500px', '.parent { width: 400px'),
+      }
+    })(),
+    (() => {
+      const html = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .box { width: 200px; height: 100px; background: #eee; }
+    </style></head><body>
+      <div class="box" data-testid="explicit-box">Content</div>
+    </body></html>`
+      return {
+        name: 'explicit height change scores higher than cascade',
+        before: html,
+        after: html.replace('height: 100px', 'height: 200px'),
+      }
+    })(),
+  ],
+}
+
 // ─── Exported sections array ────────────────────────────────────────
 
 export const sections: TestSection[] = [
@@ -1927,7 +1976,7 @@ export const sections: TestSection[] = [
   s11, s12, s13, s14, s15, s16, s17, s18, s19, s20,
   s21, s22, s23, s24, s25, s26, s27, s28, s29, s30,
   s31, s32, s33, s34, s35, s36, s37, s38, s39, s40,
-  s41, s42, s43, s44, s45, s46, s47,
+  s41, s42, s43, s44, s45, s46, s47, s48,
 ]
 
 /** Lookup helper: find a section by name */

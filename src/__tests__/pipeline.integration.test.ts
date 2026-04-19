@@ -25,7 +25,7 @@ let browser: Browser
 let page: Page
 
 beforeAll(async () => {
-  browser = await chromium.launch()
+  browser = await chromium.launch({ args: ['--disable-web-security'] })
   page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
 })
 
@@ -1454,6 +1454,19 @@ describe('False-positive resistance', () => {
     expect(r.groups).toHaveLength(0)
   })
 
+  it('identical re-render with explicitProps populated produces zero diffs', async () => {
+    const { before, after } = f('False-positive resistance', 'identical re-render produces zero diffs')
+    const r = await diffHtml(before, after)
+
+    // Verify explicitProps is populated on captured manifests
+    function hasAnyExplicitProps(node: any): boolean {
+      if (node.explicitProps && node.explicitProps.length > 0) return true
+      return node.children?.some((c: any) => hasAnyExplicitProps(c)) ?? false
+    }
+    expect(hasAnyExplicitProps(r.before.root)).toBe(true)
+    expect(r.diffs).toHaveLength(0)
+  })
+
   it('whitespace-only text difference produces zero diffs (browser collapses whitespace)', async () => {
     const { before, after } = f('False-positive resistance', 'whitespace-only text difference (should suppress)')
     const r = await diffHtml(before, after)
@@ -1482,5 +1495,63 @@ describe('False-positive resistance', () => {
     // Explicitly setting them should produce the same computed values.
     expect(r.diffs).toHaveLength(0)
     expect(r.groups).toHaveLength(0)
+  })
+})
+
+// =====================================================================
+// Section 48: Explicit vs Implicit Size Scoring
+// =====================================================================
+
+describe('Explicit vs implicit size scoring', () => {
+  it('explicit width change scores higher than implicit cascade width', async () => {
+    // Explicit: CSS sets width directly on the element
+    const explicit = f('Explicit vs implicit size scoring', 'explicit width change scores higher than cascade')
+    const rExplicit = await diffHtml(explicit.before, explicit.after)
+    const explicitDiff = findDiffByLabel(rExplicit, 'explicit-box')
+    expect(explicitDiff).toBeDefined()
+
+    // Implicit: child width changes because parent shrank (no CSS width on child)
+    const implicit = f('Explicit vs implicit size scoring', 'implicit child width change from parent resize scores low')
+    const rImplicit = await diffHtml(implicit.before, implicit.after)
+    const childDiff = rImplicit.consolidated.diffs.find(d => d.label.includes('child'))
+
+    // If the implicit child width change survives consolidation, it should score lower.
+    // If it's been suppressed entirely (bbox-only), that's also correct behavior.
+    if (childDiff) {
+      expect(explicitDiff!.score).toBeGreaterThan(childDiff.score)
+    }
+  })
+
+  it('explicit height change scores at full base (not cascade-reduced)', async () => {
+    const { before, after } = f('Explicit vs implicit size scoring', 'explicit height change scores higher than cascade')
+    const r = await diffHtml(before, after)
+
+    const diff = findDiffByLabel(r, 'explicit-box')
+    expect(diff).toBeDefined()
+    // With explicitProps, height change on an element with explicit CSS height
+    // should use full base score (40 for box-model) * 1.5 for delta > 20px = 60
+    // Without explicitProps it would be: 40 * 0.4 * 1.5 = 24
+    expect(diff!.score).toBeGreaterThanOrEqual(25) // at least moderate
+  })
+
+  it('populates explicitProps on captured manifest nodes', async () => {
+    const { before } = f('Explicit vs implicit size scoring', 'explicit width change scores higher than cascade')
+    const manifest = await captureHtml(before)
+
+    // The .box element has explicit width and height in CSS
+    function findByTestId(node: any, testId: string): any {
+      if (node.testId === testId) return node
+      for (const child of node.children ?? []) {
+        const found = findByTestId(child, testId)
+        if (found) return found
+      }
+      return null
+    }
+
+    const boxNode = findByTestId(manifest.root, 'explicit-box')
+    expect(boxNode).toBeDefined()
+    expect(boxNode.explicitProps).toBeDefined()
+    expect(boxNode.explicitProps).toContain('width')
+    expect(boxNode.explicitProps).toContain('height')
   })
 })

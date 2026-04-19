@@ -67,7 +67,7 @@ async function main() {
     process.exit(1)
   }
 
-  const browser = await chromium.launch()
+  const browser = await chromium.launch({ args: ['--disable-web-security'] })
   const page = await browser.newPage({ viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT } })
 
   const beforeDir = join(DEMO_DIR, 'before')

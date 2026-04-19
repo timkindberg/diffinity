@@ -15,7 +15,7 @@ const OUTPUT_DIR = './vr-output'
 const TARGET_URL = 'https://example.com'
 
 async function main() {
-  const browser = await chromium.launch()
+  const browser = await chromium.launch({ args: ['--disable-web-security'] })
   const page = await browser.newPage()
 
   // ─── Capture "before" ──────────────────────────────────────────

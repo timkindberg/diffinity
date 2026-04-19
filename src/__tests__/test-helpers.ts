@@ -9,7 +9,7 @@ type NodeOptions = Partial<Omit<ElementNode, 'children'>> & { children?: Element
 
 /** Build a minimal ElementNode with sensible defaults */
 export function el(tag: string, opts: NodeOptions = {}): ElementNode {
-  return {
+  const node: ElementNode = {
     idx: opts.idx ?? _idx++,
     tag,
     id: opts.id ?? null,
@@ -23,6 +23,8 @@ export function el(tag: string, opts: NodeOptions = {}): ElementNode {
     styles: opts.styles ?? {},
     children: opts.children ?? [],
   }
+  if (opts.explicitProps) node.explicitProps = opts.explicitProps
+  return node
 }
 
 /** Wrap a root ElementNode into a DomManifest */

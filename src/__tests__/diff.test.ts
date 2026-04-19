@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { matchManifests } from '../match.js'
-import { diffManifests, type DiffResult } from '../diff.js'
+import { diffManifests, scoreDiff, type DiffResult } from '../diff.js'
 import { el, manifest, resetIdx } from './test-helpers.js'
 
 beforeEach(() => resetIdx())
@@ -291,5 +291,143 @@ describe('diffManifests', () => {
     expect(result.summary.totalChanges).toBe(
       result.diffs.reduce((sum, d) => sum + d.changes.length, 0)
     )
+  })
+
+  it('scores explicit width changes higher than implicit (cascade) width changes', () => {
+    // Explicit: element has width in explicitProps → full base score
+    const beforeExplicit = el('body', { children: [
+      el('div', {
+        testId: 'box',
+        styles: { width: '200px' },
+        explicitProps: ['width'],
+        bbox: { x: 0, y: 0, w: 200, h: 50 },
+      }),
+    ]})
+    const afterExplicit = el('body', { children: [
+      el('div', {
+        testId: 'box',
+        styles: { width: '300px' },
+        explicitProps: ['width'],
+        bbox: { x: 0, y: 0, w: 300, h: 50 },
+      }),
+    ]})
+
+    const explicitResult = diffFromTrees(beforeExplicit, afterExplicit)
+    const explicitDiff = explicitResult.diffs.find(d => d.type === 'changed')!
+    expect(explicitDiff).toBeDefined()
+
+    // Implicit: element has NO width in explicitProps → 0.4× cascade reduction
+    resetIdx()
+    const beforeImplicit = el('body', { children: [
+      el('div', {
+        testId: 'box',
+        styles: { width: '200px' },
+        bbox: { x: 0, y: 0, w: 200, h: 50 },
+      }),
+    ]})
+    const afterImplicit = el('body', { children: [
+      el('div', {
+        testId: 'box',
+        styles: { width: '300px' },
+        bbox: { x: 0, y: 0, w: 300, h: 50 },
+      }),
+    ]})
+
+    const implicitResult = diffFromTrees(beforeImplicit, afterImplicit)
+    const implicitDiff = implicitResult.diffs.find(d => d.type === 'changed')!
+    expect(implicitDiff).toBeDefined()
+
+    // Explicit should score higher than implicit
+    expect(explicitDiff.score).toBeGreaterThan(implicitDiff.score)
+  })
+
+  it('scores explicit height changes higher than implicit height changes', () => {
+    const beforeExplicit = el('body', { children: [
+      el('div', {
+        testId: 'box',
+        styles: { height: '100px' },
+        explicitProps: ['height'],
+        bbox: { x: 0, y: 0, w: 100, h: 100 },
+      }),
+    ]})
+    const afterExplicit = el('body', { children: [
+      el('div', {
+        testId: 'box',
+        styles: { height: '200px' },
+        explicitProps: ['height'],
+        bbox: { x: 0, y: 0, w: 100, h: 200 },
+      }),
+    ]})
+
+    const explicitResult = diffFromTrees(beforeExplicit, afterExplicit)
+    const explicitDiff = explicitResult.diffs.find(d => d.type === 'changed')!
+    expect(explicitDiff).toBeDefined()
+
+    resetIdx()
+    const beforeImplicit = el('body', { children: [
+      el('div', {
+        testId: 'box',
+        styles: { height: '100px' },
+        bbox: { x: 0, y: 0, w: 100, h: 100 },
+      }),
+    ]})
+    const afterImplicit = el('body', { children: [
+      el('div', {
+        testId: 'box',
+        styles: { height: '200px' },
+        bbox: { x: 0, y: 0, w: 100, h: 200 },
+      }),
+    ]})
+
+    const implicitResult = diffFromTrees(beforeImplicit, afterImplicit)
+    const implicitDiff = implicitResult.diffs.find(d => d.type === 'changed')!
+    expect(implicitDiff).toBeDefined()
+
+    expect(explicitDiff.score).toBeGreaterThan(implicitDiff.score)
+  })
+
+  it('uses union of before/after explicitProps for scoring', () => {
+    // Width is explicit only in "after" (author added it) — should still score full
+    const before = el('body', { children: [
+      el('div', {
+        testId: 'box',
+        styles: { width: '200px' },
+        bbox: { x: 0, y: 0, w: 200, h: 50 },
+      }),
+    ]})
+    const after = el('body', { children: [
+      el('div', {
+        testId: 'box',
+        styles: { width: '300px' },
+        explicitProps: ['width'],
+        bbox: { x: 0, y: 0, w: 300, h: 50 },
+      }),
+    ]})
+
+    const result = diffFromTrees(before, after)
+    const diff = result.diffs.find(d => d.type === 'changed')!
+    expect(diff).toBeDefined()
+
+    // Score should be at full base (not 0.4× reduced) because after has explicit width
+    resetIdx()
+    const beforeNoExplicit = el('body', { children: [
+      el('div', {
+        testId: 'box',
+        styles: { width: '200px' },
+        bbox: { x: 0, y: 0, w: 200, h: 50 },
+      }),
+    ]})
+    const afterNoExplicit = el('body', { children: [
+      el('div', {
+        testId: 'box',
+        styles: { width: '300px' },
+        bbox: { x: 0, y: 0, w: 300, h: 50 },
+      }),
+    ]})
+
+    const implicitResult = diffFromTrees(beforeNoExplicit, afterNoExplicit)
+    const implicitDiff = implicitResult.diffs.find(d => d.type === 'changed')!
+
+    expect(diff.score).toBeGreaterThan(implicitDiff.score)
   })
 })

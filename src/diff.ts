@@ -663,7 +663,7 @@ const PROPERTY_DOMINANCE: Record<string, number> = {
   'opacity': 70,
 }
 
-function scoreChange(c: Change): number {
+function scoreChange(c: Change, explicitProps?: string[]): number {
   const base = PROPERTY_DOMINANCE[c.property] ?? SCORE_WEIGHTS[c.category] ?? 10
 
   // Transparent ↔ opaque background is adding/removing a visual surface
@@ -686,7 +686,8 @@ function scoreChange(c: Change): number {
   const aPx = parsePx(c.after)
   if (bPx != null && aPx != null) {
     const isCascade = CASCADE_PROPS.has(c.property) && (c.category === 'bbox' || c.category === 'box-model' || c.category === 'sizing')
-    const effectiveBase = isCascade ? Math.round(base * 0.4) : base
+    const isExplicit = explicitProps != null && explicitProps.includes(c.property)
+    const effectiveBase = isCascade && !isExplicit ? Math.round(base * 0.4) : base
     const delta = Math.abs(aPx - bPx)
     if (delta <= 1) return 2
     if (delta <= 5) return Math.round(effectiveBase * 0.5)
@@ -709,7 +710,7 @@ function areaMultiplier(area: number | undefined): number {
   return 1.4
 }
 
-export function scoreDiff(diff: Pick<ElementDiff, 'type' | 'changes'>, area?: number): number {
+export function scoreDiff(diff: Pick<ElementDiff, 'type' | 'changes'>, area?: number, explicitProps?: string[]): number {
   if (diff.type === 'added' || diff.type === 'removed') return 100
   if (diff.type === 'moved' && diff.changes.length === 0) return 40
 
@@ -718,7 +719,7 @@ export function scoreDiff(diff: Pick<ElementDiff, 'type' | 'changes'>, area?: nu
   let total = 0
   for (const c of diff.changes) {
     const count = categoryCounts.get(c.category) || 0
-    const raw = scoreChange(c)
+    const raw = scoreChange(c, explicitProps)
     total += count === 0 ? raw : Math.round(raw * 0.5)
     categoryCounts.set(c.category, count + 1)
   }
@@ -771,6 +772,15 @@ export function consolidateDiffs(
   function getArea(diff: ElementDiff): number | undefined {
     const node = diff.beforeIdx != null ? beforeNodes.get(diff.beforeIdx) : undefined
     return node ? node.bbox.w * node.bbox.h : undefined
+  }
+
+  function getExplicitProps(diff: ElementDiff): string[] | undefined {
+    const bNode = diff.beforeIdx != null ? beforeNodes.get(diff.beforeIdx) : undefined
+    const aNode = diff.afterIdx != null ? afterNodes.get(diff.afterIdx) : undefined
+    const bExplicit = bNode?.explicitProps ?? []
+    const aExplicit = aNode?.explicitProps ?? []
+    const combined = [...new Set([...bExplicit, ...aExplicit])]
+    return combined.length > 0 ? combined : undefined
   }
 
   const removedSet = new Set(raw.diffs.filter(d => d.type === 'removed').map(d => d.beforeIdx!))
@@ -837,7 +847,7 @@ export function consolidateDiffs(
     }
 
     if (changes !== diff.changes) {
-      const score = scoreDiff({ type: diff.type, changes }, getArea(diff))
+      const score = scoreDiff({ type: diff.type, changes }, getArea(diff), getExplicitProps(diff))
       diffs.push({ ...diff, changes, score, importance: scoreToImportance(score) })
     } else {
       diffs.push(diff)
@@ -845,7 +855,7 @@ export function consolidateDiffs(
   }
 
   // --- Pass 2: deduplicate ancestor property changes already on descendants ---
-  const deduped = deduplicateAncestorChanges(diffs, afterParents, beforeParents)
+  const deduped = deduplicateAncestorChanges(diffs, afterParents, beforeParents, beforeNodes, afterNodes)
 
   disambiguateLabels(deduped, before.root, after.root)
   deduped.sort((a, b) => b.score - a.score)
@@ -926,6 +936,8 @@ function deduplicateAncestorChanges(
   diffs: ElementDiff[],
   afterParents: Map<number, number>,
   beforeParents: Map<number, number>,
+  beforeNodes?: Map<number, ElementNode>,
+  afterNodes?: Map<number, ElementNode>,
 ): ElementDiff[] {
   type ChangeFP = string
   const afterChangesByIdx = new Map<number, Set<ChangeFP>>()
@@ -974,7 +986,13 @@ function deduplicateAncestorChanges(
     if (remaining.length === diff.changes.length) {
       result.push(diff)
     } else {
-      const score = scoreDiff({ type: diff.type, changes: remaining })
+      const bNode = diff.beforeIdx != null ? beforeNodes?.get(diff.beforeIdx) : undefined
+      const aNode = diff.afterIdx != null ? afterNodes?.get(diff.afterIdx) : undefined
+      const bEx = bNode?.explicitProps ?? []
+      const aEx = aNode?.explicitProps ?? []
+      const combined = [...new Set([...bEx, ...aEx])]
+      const elExplicit = combined.length > 0 ? combined : undefined
+      const score = scoreDiff({ type: diff.type, changes: remaining }, undefined, elExplicit)
       result.push({ ...diff, changes: remaining, score, importance: scoreToImportance(score) })
     }
   }
@@ -1102,7 +1120,11 @@ export function diffManifests(
     else type = 'changed'
 
     const elArea = bNode.bbox.w * bNode.bbox.h
-    const score = scoreDiff({ type, changes }, elArea)
+    const bExplicit = bNode.explicitProps ?? []
+    const aExplicit = aNode.explicitProps ?? []
+    const combined = [...new Set([...bExplicit, ...aExplicit])]
+    const elExplicitProps = combined.length > 0 ? combined : undefined
+    const score = scoreDiff({ type, changes }, elArea, elExplicitProps)
     diffs.push({
       type,
       beforeIdx: pair.beforeIdx,

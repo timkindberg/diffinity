@@ -50,6 +50,7 @@ export type ElementNode = {
   text: string | null
   bbox: { x: number; y: number; w: number; h: number }
   styles: Record<string, string>
+  explicitProps?: string[]
   children: ElementNode[]
 }
 
@@ -227,6 +228,72 @@ function buildBackendNodeIdMap(node: any, map: Map<number, string> = new Map()):
   return map
 }
 
+/**
+ * Browser-side function passed to page.evaluate().
+ * Walks document.styleSheets (rule-first) and inline styles to identify
+ * which CSS properties were explicitly authored for each tagged element.
+ * Returns a map of data-vr-idx → list of authored property names.
+ */
+function captureExplicitPropsInBrowser(styleProps: string[]) {
+  const tracked = new Set(styleProps)
+  const map = new Map<string, Set<string>>()
+
+  function addProp(idx: string, prop: string) {
+    if (!tracked.has(prop)) return
+    let set = map.get(idx)
+    if (!set) { set = new Set(); map.set(idx, set) }
+    set.add(prop)
+  }
+
+  function walkRules(rules: CSSRuleList) {
+    for (let i = 0; i < rules.length; i++) {
+      const rule = rules[i]
+      if (rule instanceof CSSStyleRule) {
+        let matches: NodeListOf<Element>
+        try { matches = document.querySelectorAll(rule.selectorText) } catch { continue }
+        for (const el of matches) {
+          const idx = el.getAttribute('data-vr-idx')
+          if (!idx) continue
+          for (let j = 0; j < rule.style.length; j++) {
+            addProp(idx, rule.style[j])
+          }
+        }
+      } else if ('cssRules' in rule) {
+        walkRules((rule as CSSGroupingRule).cssRules)
+      }
+    }
+  }
+
+  for (const sheet of document.styleSheets) {
+    try { walkRules(sheet.cssRules) } catch { continue }
+  }
+
+  // Inline styles
+  for (const el of document.querySelectorAll('[data-vr-idx]')) {
+    if (!(el instanceof HTMLElement)) continue
+    const idx = el.getAttribute('data-vr-idx')!
+    for (let i = 0; i < el.style.length; i++) {
+      addProp(idx, el.style[i])
+    }
+  }
+
+  // Serialize to plain object
+  const result: Record<string, string[]> = {}
+  for (const [idx, set] of map) {
+    result[idx] = [...set]
+  }
+  return result
+}
+
+/** Merge explicit props into the manifest tree by idx. */
+function mergeExplicitProps(node: ElementNode, propsMap: Record<string, string[]>) {
+  const props = propsMap[String(node.idx)]
+  if (props) node.explicitProps = props
+  for (const child of node.children) {
+    mergeExplicitProps(child, propsMap)
+  }
+}
+
 /** Merge accessible names into the manifest tree by idx. */
 function mergeAccessibleNames(node: ElementNode, nameMap: Map<number, string>) {
   const name = nameMap.get(node.idx)
@@ -257,6 +324,18 @@ export async function captureDomManifest(
   const t0 = Date.now()
   const result = await page.evaluate(captureManifestInBrowser, VISUAL_STYLE_PROPS)
   const domWalkMs = Date.now() - t0
+
+  // CSSOM pass: capture which properties were explicitly authored via stylesheets/inline
+  const t1a = Date.now()
+  if (result.root) {
+    try {
+      const explicitPropsMap = await page.evaluate(captureExplicitPropsInBrowser, VISUAL_STYLE_PROPS)
+      mergeExplicitProps(result.root as ElementNode, explicitPropsMap)
+    } catch (err) {
+      log(`  CSSOM explicit props pass failed: ${err instanceof Error ? err.message : err}`)
+    }
+  }
+  const cssomMs = Date.now() - t1a
 
   // CDP pass: get accessible names via the browser's W3C accessible name computation
   const t1 = Date.now()
@@ -295,7 +374,7 @@ export async function captureDomManifest(
   const cdpMs = Date.now() - t1
   const totalMs = Date.now() - t0
 
-  log(`  DOM manifest: ${result.totalElements} elements, ${namesResolved} accessible names (${domWalkMs}ms walk + ${cdpMs}ms CDP = ${totalMs}ms)`)
+  log(`  DOM manifest: ${result.totalElements} elements, ${namesResolved} accessible names (${domWalkMs}ms walk + ${cssomMs}ms CSSOM + ${cdpMs}ms CDP = ${totalMs}ms)`)
 
   return {
     capturedAt: new Date().toISOString(),
