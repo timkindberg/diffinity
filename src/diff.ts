@@ -814,6 +814,16 @@ export function consolidateDiffs(
     return combined.length > 0 ? combined : undefined
   }
 
+  // Pre-compute which elements have display property changes (for child suppression)
+  const displayChangedAfterIdx = new Set<number>()
+  const displayChangedBeforeIdx = new Set<number>()
+  for (const diff of raw.diffs) {
+    if (diff.changes.some(c => c.property === 'display')) {
+      if (diff.afterIdx != null) displayChangedAfterIdx.add(diff.afterIdx)
+      if (diff.beforeIdx != null) displayChangedBeforeIdx.add(diff.beforeIdx)
+    }
+  }
+
   const removedSet = new Set(raw.diffs.filter(d => d.type === 'removed').map(d => d.beforeIdx!))
   const addedSet = new Set(raw.diffs.filter(d => d.type === 'added').map(d => d.afterIdx!))
 
@@ -864,6 +874,35 @@ export function consolidateDiffs(
       if (!hasExplicitCascadeProp) {
         suppressedCount++
         continue
+      }
+    }
+
+    // Suppress implicit child dimensions from parent display type changes:
+    // When a parent changes display (e.g., block→flex), children gain computed
+    // width/height/min-* values they didn't have before (inline→block conversion).
+    // Strip these from children that don't have those properties in explicitProps.
+    if ((diff.type === 'changed' || diff.type === 'moved+changed') &&
+        changes.length > 0 &&
+        changes.some(c => CASCADE_PROPS.has(c.property))) {
+      const afterParent = diff.afterIdx != null ? afterParents.get(diff.afterIdx) : undefined
+      const beforeParent = diff.beforeIdx != null ? beforeParents.get(diff.beforeIdx) : undefined
+      const parentHasDisplayChange =
+        (afterParent != null && displayChangedAfterIdx.has(afterParent)) ||
+        (beforeParent != null && displayChangedBeforeIdx.has(beforeParent))
+
+      if (parentHasDisplayChange) {
+        const explicit = getExplicitProps(diff)
+        const filtered = changes.filter(c => {
+          if (!CASCADE_PROPS.has(c.property)) return true
+          return explicit != null && explicit.includes(c.property)
+        })
+        if (filtered.length < changes.length) {
+          changes = filtered
+          if (changes.length === 0) {
+            suppressedCount++
+            continue
+          }
+        }
       }
     }
 

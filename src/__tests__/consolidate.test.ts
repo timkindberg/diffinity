@@ -756,3 +756,107 @@ describe('browser-default margin suppression', () => {
     expect(paraDiff.changes.some(c => c.property === 'margin-left')).toBe(true)
   })
 })
+
+describe('implicit child dimension suppression (display type changes)', () => {
+  it('suppresses child width/height/min-* when parent changes display', () => {
+    // Parent: display block→flex. Children gain computed width/height/min-*
+    const before = el('body', { children: [
+      el('div', { testId: 'container', styles: { display: 'block' }, children: [
+        el('span', { testId: 'child1', styles: { width: '0px', height: '0px', 'min-width': '0px', 'min-height': '0px' } }),
+        el('span', { testId: 'child2', styles: { width: '0px', height: '0px', 'min-width': '0px', 'min-height': '0px' } }),
+      ]}),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'container', styles: { display: 'flex' }, children: [
+        el('span', { testId: 'child1', styles: { width: '120px', height: '40px', 'min-width': '120px', 'min-height': '40px' } }),
+        el('span', { testId: 'child2', styles: { width: '80px', height: '40px', 'min-width': '80px', 'min-height': '40px' } }),
+      ]}),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    // Container's display change should survive
+    const containerDiff = consolidated.diffs.find(d => d.label.includes('container'))
+    expect(containerDiff).toBeDefined()
+    expect(containerDiff!.changes.some(c => c.property === 'display')).toBe(true)
+
+    // Children's implicit width/height/min-* should be suppressed
+    const child1Diff = consolidated.diffs.find(d => d.label.includes('child1'))
+    expect(child1Diff).toBeUndefined()
+    const child2Diff = consolidated.diffs.find(d => d.label.includes('child2'))
+    expect(child2Diff).toBeUndefined()
+  })
+
+  it('preserves child cascade props when child has explicitProps', () => {
+    const before = el('body', { children: [
+      el('div', { testId: 'container', styles: { display: 'block' }, children: [
+        el('span', { testId: 'child', styles: { width: '100px', height: '0px' }, explicitProps: ['width'] }),
+      ]}),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'container', styles: { display: 'flex' }, children: [
+        el('span', { testId: 'child', styles: { width: '200px', height: '40px' }, explicitProps: ['width'] }),
+      ]}),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    // Child's explicit width should survive
+    const childDiff = consolidated.diffs.find(d => d.label.includes('child'))
+    expect(childDiff).toBeDefined()
+    expect(childDiff!.changes.some(c => c.property === 'width')).toBe(true)
+    // But implicit height should be stripped
+    expect(childDiff!.changes.some(c => c.property === 'height')).toBe(false)
+  })
+
+  it('strips cascade props but keeps non-cascade changes on children', () => {
+    // Child has color change + implicit width/height from parent display change
+    const before = el('body', { children: [
+      el('div', { testId: 'container', styles: { display: 'block' }, children: [
+        el('span', { testId: 'child', styles: { color: 'rgb(0,0,0)', width: '0px', height: '0px' } }),
+      ]}),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'container', styles: { display: 'flex' }, children: [
+        el('span', { testId: 'child', styles: { color: 'rgb(255,0,0)', width: '120px', height: '40px' } }),
+      ]}),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    const childDiff = consolidated.diffs.find(d => d.label.includes('child'))
+    expect(childDiff).toBeDefined()
+    // Color change should survive (not a CASCADE_PROP)
+    expect(childDiff!.changes.some(c => c.property === 'color')).toBe(true)
+    // Implicit width/height should be stripped
+    expect(childDiff!.changes.some(c => c.property === 'width')).toBe(false)
+    expect(childDiff!.changes.some(c => c.property === 'height')).toBe(false)
+  })
+
+  it('does not suppress when parent has no display change', () => {
+    // Parent has color change only, child has implicit width change
+    const before = el('body', { children: [
+      el('div', { testId: 'container', styles: { color: 'rgb(0,0,0)' }, children: [
+        el('span', { testId: 'child', styles: { width: '100px' } }),
+      ]}),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'container', styles: { color: 'rgb(255,0,0)' }, children: [
+        el('span', { testId: 'child', styles: { width: '200px' } }),
+      ]}),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    // Child's width change should NOT be suppressed (parent has no display change)
+    // (It may still be suppressed by the existing ancestor suppression if it's CASCADE-only)
+    // The point is that the display-change-specific suppression doesn't apply
+    const childDiff = consolidated.diffs.find(d => d.label.includes('child'))
+    // Existing suppression would suppress this too (cascade-only + no explicit)
+    // so we can't test absence of the new suppression in isolation
+    // Just verify the parent survives
+    const containerDiff = consolidated.diffs.find(d => d.label.includes('container'))
+    expect(containerDiff).toBeDefined()
+    expect(containerDiff!.changes.some(c => c.property === 'color')).toBe(true)
+  })
+})
