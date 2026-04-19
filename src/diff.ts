@@ -494,6 +494,37 @@ function collapseCoupledPairs(changes: Change[]): Change[] {
   return result
 }
 
+// ─── Browser-default margin suppression ────────────────────────────
+
+const DEFAULT_MARGIN_PROPS = new Set([
+  'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+])
+
+/**
+ * Suppress margin changes that are just browser-default 1em scaling with font-size.
+ * Elements like <p>, <h1>–<h6> have UA-stylesheet margins of 1em. When font-size
+ * changes, computed margins scale proportionally — producing phantom diff changes.
+ * If margin == font-size at both before and after states, the margin is a browser
+ * default and the change is suppressed.
+ */
+function suppressDefaultMarginScaling(changes: Change[]): Change[] {
+  const fontSizeChange = changes.find(c => c.property === 'font-size')
+  if (!fontSizeChange) return changes
+
+  const beforeFS = parsePx(fontSizeChange.before)
+  const afterFS = parsePx(fontSizeChange.after)
+  if (beforeFS == null || afterFS == null) return changes
+
+  return changes.filter(c => {
+    if (!DEFAULT_MARGIN_PROPS.has(c.property)) return true
+    const beforeMargin = parsePx(c.before)
+    const afterMargin = parsePx(c.after)
+    if (beforeMargin == null || afterMargin == null) return true
+    // margin == font-size at both states → browser default 1em
+    return !(beforeMargin === beforeFS && afterMargin === afterFS)
+  })
+}
+
 // ─── Diff scoring ───────────────────────────────────────────────────
 
 const SCORE_WEIGHTS: Record<ChangeCategory, number> = {
@@ -841,6 +872,20 @@ export function consolidateDiffs(
       const hasReportedChildChange = childHasReportedAddOrRemove(diff, addedSet, removedSet, afterNodes, beforeNodes)
       if (hasReportedChildChange) {
         changes = changes.filter(c => c.property !== 'children')
+        if (changes.length === 0) {
+          suppressedCount++
+          continue
+        }
+      }
+    }
+
+    // Suppress browser-default margin scaling: if font-size changed and
+    // a margin value equals font-size at both before/after states, the
+    // margin is just the UA default 1em scaling with font-size.
+    if (changes.length > 1) {
+      const suppressed = suppressDefaultMarginScaling(changes)
+      if (suppressed.length < changes.length) {
+        changes = suppressed
         if (changes.length === 0) {
           suppressedCount++
           continue

@@ -589,3 +589,170 @@ describe('implicit ancestor size suppression', () => {
     expect(cardDiff!.changes.some(c => c.property === 'color')).toBe(true)
   })
 })
+
+describe('browser-default margin suppression', () => {
+  it('suppresses margin changes that scale with font-size (1em default)', () => {
+    // <p> with font-size 16px → 32px: margins are 1em (16px → 32px)
+    const before = el('body', { children: [
+      el('p', { testId: 'para', styles: {
+        'font-size': '16px',
+        'margin-top': '16px',
+        'margin-bottom': '16px',
+      }, text: 'Hello' }),
+    ]})
+    const after = el('body', { children: [
+      el('p', { testId: 'para', styles: {
+        'font-size': '32px',
+        'margin-top': '32px',
+        'margin-bottom': '32px',
+      }, text: 'Hello' }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    const paraDiff = consolidated.diffs.find(d => d.label.includes('para'))
+    expect(paraDiff).toBeDefined()
+    // font-size change should survive
+    expect(paraDiff!.changes.some(c => c.property === 'font-size')).toBe(true)
+    // margin changes should be suppressed (they're browser defaults scaling with font-size)
+    expect(paraDiff!.changes.some(c => c.property === 'margin-top')).toBe(false)
+    expect(paraDiff!.changes.some(c => c.property === 'margin-bottom')).toBe(false)
+  })
+
+  it('suppresses margin on h1 with font-size change', () => {
+    // <h1> default margins are ~0.67em — but if computed margin == font-size, suppress
+    // This tests the case where margins happen to equal font-size (1em)
+    const before = el('body', { children: [
+      el('h1', { testId: 'title', styles: {
+        'font-size': '24px',
+        'margin-top': '24px',
+        'margin-bottom': '24px',
+      }, text: 'Title' }),
+    ]})
+    const after = el('body', { children: [
+      el('h1', { testId: 'title', styles: {
+        'font-size': '36px',
+        'margin-top': '36px',
+        'margin-bottom': '36px',
+      }, text: 'Title' }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    const titleDiff = consolidated.diffs.find(d => d.label.includes('title'))
+    expect(titleDiff).toBeDefined()
+    expect(titleDiff!.changes.some(c => c.property === 'font-size')).toBe(true)
+    expect(titleDiff!.changes.some(c => c.property === 'margin-top')).toBe(false)
+    expect(titleDiff!.changes.some(c => c.property === 'margin-bottom')).toBe(false)
+  })
+
+  it('keeps margin changes when they do NOT equal font-size', () => {
+    // Margins differ from font-size → they were explicitly set, keep them
+    const before = el('body', { children: [
+      el('p', { testId: 'para', styles: {
+        'font-size': '16px',
+        'margin-top': '24px',
+        'margin-bottom': '24px',
+      }, text: 'Hello' }),
+    ]})
+    const after = el('body', { children: [
+      el('p', { testId: 'para', styles: {
+        'font-size': '32px',
+        'margin-top': '48px',
+        'margin-bottom': '48px',
+      }, text: 'Hello' }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    const paraDiff = consolidated.diffs.find(d => d.label.includes('para'))
+    expect(paraDiff).toBeDefined()
+    // Margins are 1.5em, not 1em — keep them
+    expect(paraDiff!.changes.some(c => c.property === 'margin-top')).toBe(true)
+    expect(paraDiff!.changes.some(c => c.property === 'margin-bottom')).toBe(true)
+  })
+
+  it('keeps margin changes when there is no font-size change', () => {
+    // Margin changed but font-size didn't → explicit margin change
+    const before = el('body', { children: [
+      el('p', { testId: 'para', styles: {
+        'font-size': '16px',
+        'margin-top': '16px',
+        'margin-bottom': '16px',
+      }, text: 'Hello' }),
+    ]})
+    const after = el('body', { children: [
+      el('p', { testId: 'para', styles: {
+        'font-size': '16px',
+        'margin-top': '32px',
+        'margin-bottom': '32px',
+      }, text: 'Hello' }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    const paraDiff = consolidated.diffs.find(d => d.label.includes('para'))
+    expect(paraDiff).toBeDefined()
+    expect(paraDiff!.changes.some(c => c.property === 'margin-top')).toBe(true)
+    expect(paraDiff!.changes.some(c => c.property === 'margin-bottom')).toBe(true)
+  })
+
+  it('reduces score significantly when margin scaling is suppressed', () => {
+    // This is the exact scenario from the bead: font-size change on <p>
+    // inflating score from ~42 (moderate) to 116 (critical)
+    const before = el('body', { children: [
+      el('p', { testId: 'para', styles: {
+        'font-size': '16px',
+        'margin-top': '16px',
+        'margin-bottom': '16px',
+      }, text: 'Hello' }),
+    ]})
+    const after = el('body', { children: [
+      el('p', { testId: 'para', styles: {
+        'font-size': '32px',
+        'margin-top': '32px',
+        'margin-bottom': '32px',
+      }, text: 'Hello' }),
+    ]})
+
+    const { raw, consolidated } = fullPipeline(before, after)
+
+    const rawPara = raw.diffs.find(d => d.label.includes('para'))!
+    const conPara = consolidated.diffs.find(d => d.label.includes('para'))!
+
+    // Raw should have font-size + margin-top + margin-bottom (3 changes)
+    expect(rawPara.changes).toHaveLength(3)
+    // Consolidated should have only font-size (1 change)
+    expect(conPara.changes).toHaveLength(1)
+    // Score should be lower after suppression
+    expect(conPara.score).toBeLessThan(rawPara.score)
+  })
+
+  it('only suppresses matching margin sides, keeps non-matching sides', () => {
+    // margin-top matches font-size scaling, margin-left does not
+    const before = el('body', { children: [
+      el('p', { testId: 'para', styles: {
+        'font-size': '16px',
+        'margin-top': '16px',
+        'margin-left': '20px',
+      }, text: 'Hello' }),
+    ]})
+    const after = el('body', { children: [
+      el('p', { testId: 'para', styles: {
+        'font-size': '32px',
+        'margin-top': '32px',
+        'margin-left': '40px',
+      }, text: 'Hello' }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    const paraDiff = consolidated.diffs.find(d => d.label.includes('para'))!
+    expect(paraDiff).toBeDefined()
+    expect(paraDiff.changes.some(c => c.property === 'font-size')).toBe(true)
+    // margin-top suppressed (16==16, 32==32)
+    expect(paraDiff.changes.some(c => c.property === 'margin-top')).toBe(false)
+    // margin-left kept (20!=16, 40!=32)
+    expect(paraDiff.changes.some(c => c.property === 'margin-left')).toBe(true)
+  })
+})
