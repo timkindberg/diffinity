@@ -278,9 +278,10 @@ function DiffEntry({ diff, flatIdx, focused, cursorIdx, onSetCursor, onFocus }: 
       onMouseLeave={() => clearHighlights()}
     >
       <div class="el-diff-header" onClick={(e) => {
+        const el = (e.currentTarget as HTMLElement).parentElement!
         onFocus()
         onSetCursor(flatIdx)
-        ;(e.currentTarget as HTMLElement).parentElement!.classList.toggle('open')
+        requestAnimationFrame(() => el.classList.toggle('open'))
       }}>
         <div class="el-diff-badges">
           <span class={`el-diff-importance imp-${imp}`}>{imp}</span>
@@ -322,9 +323,10 @@ function GroupEntry({ group, flatIdx, focused, cursorIdx, onSetCursor, onFocus }
       onMouseLeave={() => clearHighlights()}
     >
       <div class="el-diff-header" onClick={(e) => {
+        const el = (e.currentTarget as HTMLElement).parentElement!
         onFocus()
         onSetCursor(flatIdx)
-        ;(e.currentTarget as HTMLElement).parentElement!.classList.toggle('open')
+        requestAnimationFrame(() => el.classList.toggle('open'))
       }}>
         <div class="el-diff-badges">
           <span class={`el-diff-importance imp-${imp}`}>{imp}</span>
@@ -386,9 +388,10 @@ function CascadeEntry({ cluster, flatIdx, focused, cursorIdx, onSetCursor, onFoc
       onMouseLeave={() => clearHighlights()}
     >
       <div class="el-diff-header" onClick={(e) => {
+        const el = (e.currentTarget as HTMLElement).parentElement!
         onFocus()
         onSetCursor(flatIdx)
-        ;(e.currentTarget as HTMLElement).parentElement!.classList.toggle('open')
+        requestAnimationFrame(() => el.classList.toggle('open'))
       }}>
         <div class="el-diff-badges">
           <span class="el-diff-type changed">{'\u2248'}</span>

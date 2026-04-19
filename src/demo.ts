@@ -49,7 +49,7 @@ function getReportTemplate(): string | null {
 }
 
 function buildReportHtml(template: string, vrData: object): string {
-  const dataScript = `<script>window.VR_DATA = ${JSON.stringify(vrData)};</script>`
+  const dataScript = `<script>window.VR_DATA = ${JSON.stringify(vrData).replace(/<\//g, '<\\/')};</script>`
   const firstScript = template.indexOf('<script>')
   if (firstScript !== -1) {
     return template.slice(0, firstScript) + dataScript + '\n    ' + template.slice(firstScript)
@@ -184,6 +184,8 @@ async function main() {
   const reportHtml = buildReportHtml(template, vrData)
   const reportPath = join(DEMO_DIR, 'index.html')
   writeFileSync(reportPath, reportHtml)
+
+
 
   console.log(`\n${totalCases} cases, ${totalDiffs} total changes`)
   console.log(`Report: ${reportPath}`)
