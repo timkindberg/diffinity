@@ -273,7 +273,20 @@
         ov.style.background = 'transparent';
         ov.style.opacity = '0.5';
         ov.style.display = 'block';
-        if (label) { label.textContent = getLabelText(type, null); label.style.display = ''; }
+        if (label) {
+          label.textContent = getLabelText(type, null);
+          label.style.display = '';
+          var aLabelTop = aRect.top - PADDING - 22;
+          if (aLabelTop < 0) {
+            label.style.top = 'auto';
+            label.style.bottom = '-22px';
+            label.style.borderRadius = '0 0 3px 3px';
+          } else {
+            label.style.top = '-22px';
+            label.style.bottom = 'auto';
+            label.style.borderRadius = '3px 3px 0 0';
+          }
+        }
 
         if (ovIndex === 0) {
           msgEl.textContent = 'Element not visible at current zoom';
@@ -309,6 +322,21 @@
       label.style.display = labelText ? '' : 'none';
     }
     positionOverlay(ov, rect, color);
+
+    // Flip label below the overlay when it would clip off the top of the viewport
+    if (label && labelText) {
+      var labelTop = rect.top - PADDING - 22;
+      if (labelTop < 0) {
+        label.style.top = 'auto';
+        label.style.bottom = '-22px';
+        label.style.borderRadius = '0 0 3px 3px';
+      } else {
+        label.style.top = '-22px';
+        label.style.bottom = 'auto';
+        label.style.borderRadius = '3px 3px 0 0';
+      }
+    }
+
     ov.style.background = hexToRgba(color, 0.35);
     ov.style.opacity = '1';
     ov.style.display = 'block';
