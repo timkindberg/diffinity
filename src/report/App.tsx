@@ -207,7 +207,7 @@ export function App() {
       </div>
 
       <div id="app-body">
-        <div style={sidebarOpen ? undefined : 'display:none'}>
+        <div style={sidebarOpen ? 'display:contents' : 'display:none'}>
           <Sidebar
             pages={pages}
             selected={selected}
@@ -220,7 +220,7 @@ export function App() {
           />
         </div>
 
-        <div style={diffPanelOpen ? undefined : 'display:none'}>
+        <div style={diffPanelOpen ? 'display:contents' : 'display:none'}>
           <DiffPanel
             pages={pages}
             selected={selected}
