@@ -430,6 +430,56 @@ describe('collapseChanges — padding/margin quad', () => {
     const result = collapseChanges(changes)
     expect(result).toHaveLength(4)
   })
+
+  it('collapses 2-axis symmetric padding to 2-value shorthand', () => {
+    const changes: Change[] = [
+      change({ property: 'padding-top', before: '8px', after: '10px' }),
+      change({ property: 'padding-right', before: '16px', after: '20px' }),
+      change({ property: 'padding-bottom', before: '8px', after: '10px' }),
+      change({ property: 'padding-left', before: '16px', after: '20px' }),
+    ]
+    const result = collapseChanges(changes)
+    expect(result).toHaveLength(1)
+    expect(result[0].property).toBe('padding')
+    expect(result[0].before).toBe('8px 16px')
+    expect(result[0].after).toBe('10px 20px')
+  })
+
+  it('collapses 2-axis symmetric margin to 2-value shorthand', () => {
+    const changes: Change[] = [
+      change({ property: 'margin-top', before: '0px', after: '4px' }),
+      change({ property: 'margin-right', before: '12px', after: '16px' }),
+      change({ property: 'margin-bottom', before: '0px', after: '4px' }),
+      change({ property: 'margin-left', before: '12px', after: '16px' }),
+    ]
+    const result = collapseChanges(changes)
+    expect(result).toHaveLength(1)
+    expect(result[0].property).toBe('margin')
+    expect(result[0].before).toBe('0px 12px')
+    expect(result[0].after).toBe('4px 16px')
+  })
+
+  it('does not 2-axis collapse when top !== bottom', () => {
+    const changes: Change[] = [
+      change({ property: 'padding-top', before: '8px', after: '10px' }),
+      change({ property: 'padding-right', before: '16px', after: '20px' }),
+      change({ property: 'padding-bottom', before: '12px', after: '14px' }),
+      change({ property: 'padding-left', before: '16px', after: '20px' }),
+    ]
+    const result = collapseChanges(changes)
+    expect(result).toHaveLength(4)
+  })
+
+  it('does not 2-axis collapse when left !== right', () => {
+    const changes: Change[] = [
+      change({ property: 'margin-top', before: '8px', after: '10px' }),
+      change({ property: 'margin-right', before: '16px', after: '20px' }),
+      change({ property: 'margin-bottom', before: '8px', after: '10px' }),
+      change({ property: 'margin-left', before: '24px', after: '20px' }),
+    ]
+    const result = collapseChanges(changes)
+    expect(result).toHaveLength(4)
+  })
 })
 
 describe('collapseChanges — coupled pairs', () => {

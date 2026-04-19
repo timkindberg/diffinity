@@ -439,7 +439,9 @@ export function collapseChanges(changes: Change[]): Change[] {
   result = collapseQuad(result, BORDER_COLOR_QUAD, 'border-color')
   result = collapseQuad(result, BORDER_STYLE_QUAD, 'border-style')
   result = collapseQuad(result, PADDING_QUAD, 'padding')
+  result = collapseQuadTwoAxis(result, PADDING_QUAD, 'padding')
   result = collapseQuad(result, MARGIN_QUAD, 'margin')
+  result = collapseQuadTwoAxis(result, MARGIN_QUAD, 'margin')
   result = collapseForegroundColor(result)
   result = collapseCoupledPairs(result)
   return result
@@ -461,6 +463,32 @@ function collapseQuad(changes: Change[], quad: string[], shorthand: string): Cha
     before: first.before,
     after: first.after,
     description: `${shorthand}: ${first.before} → ${first.after}`,
+  }
+
+  const quadSet = new Set(quad)
+  return [...changes.filter(c => !quadSet.has(c.property)), collapsed]
+}
+
+/**
+ * 2-axis collapse: when top==bottom AND left==right (but not all 4 identical),
+ * collapse to a 2-value shorthand like `padding: 8px 16px → 10px 20px`.
+ * Quad order is [top, right, bottom, left] per CSS convention.
+ */
+function collapseQuadTwoAxis(changes: Change[], quad: string[], shorthand: string): Change[] {
+  const quadChanges = quad.map(p => changes.find(c => c.property === p))
+  if (quadChanges.some(c => !c)) return changes
+
+  const [top, right, bottom, left] = quadChanges as [Change, Change, Change, Change]
+
+  if (top.before !== bottom.before || top.after !== bottom.after) return changes
+  if (right.before !== left.before || right.after !== left.after) return changes
+
+  const collapsed: Change = {
+    category: top.category,
+    property: shorthand,
+    before: `${top.before} ${right.before}`,
+    after: `${top.after} ${right.after}`,
+    description: `${shorthand}: ${top.before} ${right.before} → ${top.after} ${right.after}`,
   }
 
   const quadSet = new Set(quad)
