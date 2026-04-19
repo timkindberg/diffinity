@@ -1969,6 +1969,66 @@ const s48: TestSection = {
   ],
 }
 
+// Section 49: Implicit ancestor size suppression
+const s49: TestSection = {
+  name: 'Implicit ancestor size suppression',
+  cases: [
+    (() => {
+      const html = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .card { padding: 16px; border: 1px solid #ddd; border-radius: 8px; }
+      .card p { font-size: 14px; }
+    </style></head><body>
+      <div class="card" data-testid="card">
+        <p data-testid="text">Some text content</p>
+      </div>
+    </body></html>`
+      return {
+        name: 'font-size change on child suppresses implicit height on parent',
+        before: html,
+        after: html.replace('.card p { font-size: 14px; }', '.card p { font-size: 20px; }'),
+      }
+    })(),
+    (() => {
+      const html = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .card { height: 200px; padding: 16px; border: 1px solid #ddd; }
+      .card p { font-size: 14px; }
+    </style></head><body>
+      <div class="card" data-testid="card">
+        <p data-testid="text">Some text content</p>
+      </div>
+    </body></html>`
+      return {
+        name: 'explicit height on parent survives when child font-size changes',
+        before: html,
+        after: html
+          .replace('height: 200px', 'height: 250px')
+          .replace('.card p { font-size: 14px; }', '.card p { font-size: 20px; }'),
+      }
+    })(),
+    (() => {
+      const html = `<!DOCTYPE html><html><head><style>
+      body { margin: 0; }
+      .wrapper { padding: 16px; }
+      .inner { padding: 8px; }
+      .inner span { font-size: 14px; }
+    </style></head><body>
+      <div class="wrapper" data-testid="wrapper">
+        <div class="inner" data-testid="inner">
+          <span data-testid="label">Label text</span>
+        </div>
+      </div>
+    </body></html>`
+      return {
+        name: 'multi-level implicit height cascade all suppressed',
+        before: html,
+        after: html.replace('.inner span { font-size: 14px; }', '.inner span { font-size: 24px; }'),
+      }
+    })(),
+  ],
+}
+
 // ─── Exported sections array ────────────────────────────────────────
 
 export const sections: TestSection[] = [
@@ -1976,7 +2036,7 @@ export const sections: TestSection[] = [
   s11, s12, s13, s14, s15, s16, s17, s18, s19, s20,
   s21, s22, s23, s24, s25, s26, s27, s28, s29, s30,
   s31, s32, s33, s34, s35, s36, s37, s38, s39, s40,
-  s41, s42, s43, s44, s45, s46, s47, s48,
+  s41, s42, s43, s44, s45, s46, s47, s48, s49,
 ]
 
 /** Lookup helper: find a section by name */

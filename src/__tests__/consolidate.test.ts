@@ -244,13 +244,13 @@ describe('consolidateDiffs', () => {
     // Container has box-model width change, child has bbox width change.
     // These should NOT be treated as duplicates.
     const before = el('body', { children: [
-      el('div', { testId: 'container', styles: { width: '800px' }, bbox: { x: 0, y: 0, w: 832, h: 200 }, children: [
+      el('div', { testId: 'container', styles: { width: '800px' }, explicitProps: ['width'], bbox: { x: 0, y: 0, w: 832, h: 200 }, children: [
         el('div', { testId: 'child', styles: { width: '768px' }, bbox: { x: 0, y: 0, w: 768, h: 50 } }),
       ]}),
     ]})
 
     const after = el('body', { children: [
-      el('div', { testId: 'container', styles: { width: '700px' }, bbox: { x: 0, y: 0, w: 732, h: 200 }, children: [
+      el('div', { testId: 'container', styles: { width: '700px' }, explicitProps: ['width'], bbox: { x: 0, y: 0, w: 732, h: 200 }, children: [
         el('div', { testId: 'child', styles: { width: '668px' }, bbox: { x: 0, y: 0, w: 668, h: 50 } }),
       ]}),
     ]})
@@ -457,5 +457,68 @@ describe('collapseChanges — coupled pairs', () => {
     ]
     const result = collapseChanges(changes)
     expect(result).toHaveLength(2)
+  })
+})
+
+describe('implicit ancestor size suppression', () => {
+  it('suppresses height-only diff when element has no explicitProps for height', () => {
+    // Parent has no explicit height, child changes font-size → parent height changes implicitly
+    const before = el('body', { children: [
+      el('div', { testId: 'card', styles: { height: '50px' }, bbox: { x: 0, y: 0, w: 200, h: 50 }, children: [
+        el('p', { testId: 'text', styles: { 'font-size': '14px' }, text: 'Hello' }),
+      ]}),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'card', styles: { height: '60px' }, bbox: { x: 0, y: 0, w: 200, h: 60 }, children: [
+        el('p', { testId: 'text', styles: { 'font-size': '20px' }, text: 'Hello' }),
+      ]}),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    // font-size change on the child should survive
+    const textDiff = consolidated.diffs.find(d => d.label.includes('text'))
+    expect(textDiff).toBeDefined()
+    expect(textDiff!.changes.some(c => c.property === 'font-size')).toBe(true)
+
+    // card's height-only change should be suppressed (no explicit height)
+    const cardDiff = consolidated.diffs.find(d => d.label.includes('card'))
+    expect(cardDiff).toBeUndefined()
+  })
+
+  it('preserves height diff when element has explicitProps for height', () => {
+    const before = el('body', { children: [
+      el('div', { testId: 'card', styles: { height: '200px' }, explicitProps: ['height'], bbox: { x: 0, y: 0, w: 200, h: 200 }, children: [
+        el('p', { testId: 'text', text: 'Hello' }),
+      ]}),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'card', styles: { height: '250px' }, explicitProps: ['height'], bbox: { x: 0, y: 0, w: 200, h: 250 }, children: [
+        el('p', { testId: 'text', text: 'Hello' }),
+      ]}),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    // card has explicit height — height change should survive
+    const cardDiff = consolidated.diffs.find(d => d.label.includes('card'))
+    expect(cardDiff).toBeDefined()
+    expect(cardDiff!.changes.some(c => c.property === 'height')).toBe(true)
+  })
+
+  it('does not suppress when element has mixed cascade + non-cascade changes', () => {
+    const before = el('body', { children: [
+      el('div', { testId: 'card', styles: { height: '50px', color: 'black' }, bbox: { x: 0, y: 0, w: 200, h: 50 } }),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'card', styles: { height: '60px', color: 'red' }, bbox: { x: 0, y: 0, w: 200, h: 60 } }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    // Has color change (non-cascade) so the diff should survive
+    const cardDiff = consolidated.diffs.find(d => d.label.includes('card'))
+    expect(cardDiff).toBeDefined()
+    expect(cardDiff!.changes.some(c => c.property === 'color')).toBe(true)
   })
 })

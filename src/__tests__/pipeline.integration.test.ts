@@ -33,6 +33,9 @@ afterAll(async () => { await browser?.close() })
 
 const noop = () => {}
 
+// Mirror of CASCADE_PROPS from diff.ts for test assertions
+const CASCADE_PROPS_SET = new Set(['width', 'height', 'min-width', 'max-width', 'min-height', 'max-height'])
+
 async function captureHtml(html: string): Promise<DomManifest> {
   await page.setContent(html, { waitUntil: 'load' })
   return captureDomManifest(page, noop)
@@ -1553,5 +1556,60 @@ describe('Explicit vs implicit size scoring', () => {
     expect(boxNode.explicitProps).toBeDefined()
     expect(boxNode.explicitProps).toContain('width')
     expect(boxNode.explicitProps).toContain('height')
+  })
+})
+
+// =====================================================================
+// Section 49: Implicit Ancestor Size Suppression
+// =====================================================================
+
+describe('Implicit ancestor size suppression', () => {
+  it('suppresses implicit height on parent when child font-size changes', async () => {
+    const { before, after } = f('Implicit ancestor size suppression', 'font-size change on child suppresses implicit height on parent')
+    const r = await diffHtml(before, after)
+
+    // The child's font-size change is the real mutation
+    const textDiff = findDiffByLabel(r, 'text')
+    expect(textDiff).toBeDefined()
+    expect(textDiff!.changes.some(c => c.property === 'font-size')).toBe(true)
+
+    // The parent card has no explicit height — its height change is a side-effect.
+    // It should be suppressed by consolidation.
+    const cardDiff = findDiffByLabel(r, 'card')
+    if (cardDiff) {
+      // If card survived, it should NOT have height-only changes
+      expect(cardDiff.changes.some(c => !CASCADE_PROPS_SET.has(c.property))).toBe(true)
+    }
+  })
+
+  it('preserves explicit height on parent even when child also changes', async () => {
+    const { before, after } = f('Implicit ancestor size suppression', 'explicit height on parent survives when child font-size changes')
+    const r = await diffHtml(before, after)
+
+    // Parent has explicit height: 200px → 250px — this should survive
+    const cardDiff = findDiffByLabel(r, 'card')
+    expect(cardDiff).toBeDefined()
+    const heightChange = cardDiff!.changes.find(c => c.property === 'height')
+    expect(heightChange).toBeDefined()
+  })
+
+  it('suppresses multi-level implicit height cascade', async () => {
+    const { before, after } = f('Implicit ancestor size suppression', 'multi-level implicit height cascade all suppressed')
+    const r = await diffHtml(before, after)
+
+    // Only the font-size change on the span should survive
+    const labelDiff = findDiffByLabel(r, 'label')
+    expect(labelDiff).toBeDefined()
+    expect(labelDiff!.changes.some(c => c.property === 'font-size')).toBe(true)
+
+    // wrapper and inner have no explicit height — their height changes are suppressed
+    const wrapperDiff = findDiffByLabel(r, 'wrapper')
+    const innerDiff = findDiffByLabel(r, 'inner')
+    if (wrapperDiff) {
+      expect(wrapperDiff.changes.some(c => !CASCADE_PROPS_SET.has(c.property))).toBe(true)
+    }
+    if (innerDiff) {
+      expect(innerDiff.changes.some(c => !CASCADE_PROPS_SET.has(c.property))).toBe(true)
+    }
   })
 })
