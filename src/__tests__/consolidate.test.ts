@@ -506,6 +506,73 @@ describe('implicit ancestor size suppression', () => {
     expect(cardDiff!.changes.some(c => c.property === 'height')).toBe(true)
   })
 
+  it('inserted banner causes height cascade: body height suppressed after bbox strip', () => {
+    // Body has height change (cascade from inserted banner) + bbox x/y changes.
+    // Before the fix, bbox x/y prevented CASCADE_PROPS-only detection.
+    const before = el('body', { styles: { height: '178px' }, bbox: { x: 0, y: 0, w: 1440, h: 178 }, children: [
+      el('main', { testId: 'content', text: 'Hello' }),
+    ]})
+    const after = el('body', { styles: { height: '219px' }, bbox: { x: 0, y: 0, w: 1440, h: 219 }, children: [
+      el('div', { testId: 'banner', text: 'New banner!' }),
+      el('main', { testId: 'content', text: 'Hello' }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    // Banner addition is reported
+    expect(consolidated.diffs.some(d => d.type === 'added' && d.label.includes('banner'))).toBe(true)
+
+    // Body's implicit height change should be suppressed (no explicit height)
+    const bodyDiff = consolidated.diffs.find(d => d.label === 'Container' && d.type === 'changed')
+    expect(bodyDiff).toBeUndefined()
+  })
+
+  it('sidebar width change: main-content width suppressed after bbox strip', () => {
+    const before = el('body', { children: [
+      el('aside', { testId: 'sidebar', styles: { width: '200px' }, explicitProps: ['width'], bbox: { x: 0, y: 0, w: 200, h: 900 } }),
+      el('main', { testId: 'main-content', styles: { width: '1136px' }, bbox: { x: 200, y: 0, w: 1136, h: 900 } }),
+    ]})
+    const after = el('body', { children: [
+      el('aside', { testId: 'sidebar', styles: { width: '240px' }, explicitProps: ['width'], bbox: { x: 0, y: 0, w: 240, h: 900 } }),
+      el('main', { testId: 'main-content', styles: { width: '1096px' }, bbox: { x: 240, y: 0, w: 1096, h: 900 } }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    // Sidebar width is explicit — should survive
+    const sidebarDiff = consolidated.diffs.find(d => d.label.includes('sidebar'))
+    expect(sidebarDiff).toBeDefined()
+    expect(sidebarDiff!.changes.some(c => c.property === 'width')).toBe(true)
+
+    // Main-content width is implicit (no explicitProps) — should be suppressed
+    const mainDiff = consolidated.diffs.find(d => d.label.includes('main-content'))
+    expect(mainDiff).toBeUndefined()
+  })
+
+  it('parent border change: child width suppressed after bbox strip', () => {
+    const before = el('body', { children: [
+      el('div', { testId: 'parent', styles: { 'border-top-width': '0px', 'border-top-style': 'none', 'border-top-color': 'rgb(0,0,0)' }, explicitProps: ['border-top-width', 'border-top-style', 'border-top-color'], bbox: { x: 0, y: 0, w: 1440, h: 400 }, children: [
+        el('div', { testId: 'child', styles: { width: '1390px' }, bbox: { x: 25, y: 0, w: 1390, h: 300 } }),
+      ]}),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'parent', styles: { 'border-top-width': '3px', 'border-top-style': 'solid', 'border-top-color': 'rgb(255,0,0)' }, explicitProps: ['border-top-width', 'border-top-style', 'border-top-color'], bbox: { x: 0, y: 0, w: 1440, h: 400 }, children: [
+        el('div', { testId: 'child', styles: { width: '1384px' }, bbox: { x: 25, y: 3, w: 1384, h: 297 } }),
+      ]}),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    // Parent border change should survive
+    const parentDiff = consolidated.diffs.find(d => d.label.includes('parent'))
+    expect(parentDiff).toBeDefined()
+    expect(parentDiff!.changes.some(c => c.property.includes('border'))).toBe(true)
+
+    // Child's implicit width change should be suppressed
+    const childDiff = consolidated.diffs.find(d => d.label.includes('child'))
+    expect(childDiff).toBeUndefined()
+  })
+
   it('does not suppress when element has mixed cascade + non-cascade changes', () => {
     const before = el('body', { children: [
       el('div', { testId: 'card', styles: { height: '50px', color: 'black' }, bbox: { x: 0, y: 0, w: 200, h: 50 } }),

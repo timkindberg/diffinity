@@ -810,21 +810,31 @@ export function consolidateDiffs(
       continue
     }
 
-    // Suppress implicit ancestor size changes: if ALL changes are CASCADE_PROPS
-    // (width, height, min-*, max-*) and NONE of those properties are in explicitProps,
-    // the size change is a side-effect of a descendant's content/style change.
+    let changes = diff.changes
+
+    // Strip bbox/position noise from mixed changes (must happen BEFORE implicit
+    // suppression so that bbox x/y don't prevent CASCADE_PROPS-only detection)
+    if (changes.length > 0) {
+      const meaningful = changes.filter(c => c.category !== 'bbox' && c.category !== 'position')
+      if (meaningful.length > 0 && meaningful.length < changes.length) {
+        changes = meaningful
+      }
+    }
+
+    // Suppress implicit ancestor size changes: if ALL remaining changes are
+    // CASCADE_PROPS (width, height, min-*, max-*) and NONE of those properties
+    // are in explicitProps, the size change is a side-effect of a descendant's
+    // content/style change.
     if ((diff.type === 'changed' || diff.type === 'moved+changed') &&
-        diff.changes.every(c => CASCADE_PROPS.has(c.property)) &&
-        diff.changes.length > 0) {
+        changes.every(c => CASCADE_PROPS.has(c.property)) &&
+        changes.length > 0) {
       const explicit = getExplicitProps(diff)
-      const hasExplicitCascadeProp = diff.changes.some(c => explicit != null && explicit.includes(c.property))
+      const hasExplicitCascadeProp = changes.some(c => explicit != null && explicit.includes(c.property))
       if (!hasExplicitCascadeProp) {
         suppressedCount++
         continue
       }
     }
-
-    let changes = diff.changes
 
     // Strip `children` count change when the actual child add/remove is already a diff item
     if (changes.some(c => c.property === 'children')) {
@@ -835,14 +845,6 @@ export function consolidateDiffs(
           suppressedCount++
           continue
         }
-      }
-    }
-
-    // Strip bbox/position noise from mixed changes
-    if (changes.length > 0) {
-      const meaningful = changes.filter(c => c.category !== 'bbox' && c.category !== 'position')
-      if (meaningful.length > 0 && meaningful.length < changes.length) {
-        changes = meaningful
       }
     }
 
