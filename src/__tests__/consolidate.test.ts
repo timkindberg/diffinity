@@ -286,6 +286,49 @@ describe('consolidateDiffs', () => {
     expect(consolidated.diffs.filter(d => d.type === 'changed')).toHaveLength(0)
   })
 
+  it('collapses uniform padding to shorthand in full pipeline', () => {
+    const before = el('body', { children: [
+      el('div', { testId: 'card', styles: {
+        'padding-top': '16px', 'padding-right': '16px',
+        'padding-bottom': '16px', 'padding-left': '16px',
+      }}),
+    ]})
+
+    const after = el('body', { children: [
+      el('div', { testId: 'card', styles: {
+        'padding-top': '32px', 'padding-right': '32px',
+        'padding-bottom': '32px', 'padding-left': '32px',
+      }}),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+    const cardDiff = consolidated.diffs.find(d => d.label.includes('card'))!
+    expect(cardDiff).toBeDefined()
+    expect(cardDiff.changes).toHaveLength(1)
+    expect(cardDiff.changes[0].property).toBe('padding')
+  })
+
+  it('does not collapse non-uniform padding in full pipeline', () => {
+    const before = el('body', { children: [
+      el('div', { testId: 'card', styles: {
+        'padding-top': '16px', 'padding-bottom': '16px',
+      }}),
+    ]})
+
+    const after = el('body', { children: [
+      el('div', { testId: 'card', styles: {
+        'padding-top': '32px', 'padding-bottom': '32px',
+      }}),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+    const cardDiff = consolidated.diffs.find(d => d.label.includes('card'))!
+    expect(cardDiff).toBeDefined()
+    expect(cardDiff.changes.some(c => c.property === 'padding-top')).toBe(true)
+    expect(cardDiff.changes.some(c => c.property === 'padding-bottom')).toBe(true)
+    expect(cardDiff.changes.some(c => c.property === 'padding')).toBe(false)
+  })
+
   it('does not group diffs with different fingerprints', () => {
     const before = el('body', { children: [
       el('span', { testId: 'a', styles: { color: 'red' }, text: 'A' }),
@@ -316,6 +359,56 @@ function change(overrides: Partial<Change>): Change {
     description: overrides.description ?? '',
   }
 }
+
+describe('collapseChanges — padding/margin quad', () => {
+  it('collapses uniform padding change to shorthand', () => {
+    const changes: Change[] = [
+      change({ property: 'padding-top', before: '16px', after: '32px' }),
+      change({ property: 'padding-right', before: '16px', after: '32px' }),
+      change({ property: 'padding-bottom', before: '16px', after: '32px' }),
+      change({ property: 'padding-left', before: '16px', after: '32px' }),
+    ]
+    const result = collapseChanges(changes)
+    expect(result).toHaveLength(1)
+    expect(result[0].property).toBe('padding')
+    expect(result[0].before).toBe('16px')
+    expect(result[0].after).toBe('32px')
+  })
+
+  it('does not collapse non-uniform padding', () => {
+    const changes: Change[] = [
+      change({ property: 'padding-top', before: '16px', after: '32px' }),
+      change({ property: 'padding-bottom', before: '16px', after: '32px' }),
+    ]
+    const result = collapseChanges(changes)
+    expect(result).toHaveLength(2)
+  })
+
+  it('collapses uniform margin change to shorthand', () => {
+    const changes: Change[] = [
+      change({ property: 'margin-top', before: '8px', after: '16px' }),
+      change({ property: 'margin-right', before: '8px', after: '16px' }),
+      change({ property: 'margin-bottom', before: '8px', after: '16px' }),
+      change({ property: 'margin-left', before: '8px', after: '16px' }),
+    ]
+    const result = collapseChanges(changes)
+    expect(result).toHaveLength(1)
+    expect(result[0].property).toBe('margin')
+    expect(result[0].before).toBe('8px')
+    expect(result[0].after).toBe('16px')
+  })
+
+  it('does not collapse margin when values differ across sides', () => {
+    const changes: Change[] = [
+      change({ property: 'margin-top', before: '8px', after: '16px' }),
+      change({ property: 'margin-right', before: '8px', after: '16px' }),
+      change({ property: 'margin-bottom', before: '8px', after: '16px' }),
+      change({ property: 'margin-left', before: '0px', after: '16px' }),
+    ]
+    const result = collapseChanges(changes)
+    expect(result).toHaveLength(4)
+  })
+})
 
 describe('collapseChanges — coupled pairs', () => {
   it('drops height when line-height has the same before→after', () => {
