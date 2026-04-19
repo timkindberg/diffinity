@@ -329,6 +329,28 @@ describe('consolidateDiffs', () => {
     expect(cardDiff.changes.some(c => c.property === 'padding')).toBe(false)
   })
 
+  it('does not suppress z-index and overflow changes (visual category)', () => {
+    const before = el('body', { children: [
+      el('div', { testId: 'modal', styles: { 'z-index': '1', 'overflow-x': 'visible', 'overflow-y': 'visible' } }),
+    ]})
+
+    const after = el('body', { children: [
+      el('div', { testId: 'modal', styles: { 'z-index': '9999', 'overflow-x': 'hidden', 'overflow-y': 'scroll' } }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    const modalDiff = consolidated.diffs.find(d => d.label.includes('modal'))
+    expect(modalDiff).toBeDefined()
+    expect(modalDiff!.changes.some(c => c.property === 'z-index')).toBe(true)
+    expect(modalDiff!.changes.some(c => c.property === 'overflow-x')).toBe(true)
+    expect(modalDiff!.changes.some(c => c.property === 'overflow-y')).toBe(true)
+    // All should be categorized as visual, not position
+    for (const c of modalDiff!.changes) {
+      expect(c.category).toBe('visual')
+    }
+  })
+
   it('does not group diffs with different fingerprints', () => {
     const before = el('body', { children: [
       el('span', { testId: 'a', styles: { color: 'red' }, text: 'A' }),
