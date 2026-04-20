@@ -82,12 +82,18 @@ function loadManifest(phaseDir: string, dirName: string, width: number): DomMani
 // ─── Report template ──────────────────────────────────────────────
 
 function getReportTemplate(): string | null {
+  // Only the BUILT template (inlined JS, no module src) is viable for file:// viewing.
+  // The source template uses `<script type="module" src="./main.tsx">` which breaks on file://.
   const possiblePaths = [
-    join(_dirname, 'report', 'index.html'),            // dist/report/index.html (published package)
-    join(_dirname, '..', 'dist', 'report', 'index.html'), // from src/ during development
+    join(_dirname, '..', 'dist', 'report', 'index.html'), // from src/ during development (preferred)
+    join(_dirname, 'report', 'index.html'),               // dist/report/index.html (published package)
   ]
   for (const p of possiblePaths) {
-    if (existsSync(p)) return readFileSync(p, 'utf-8')
+    if (!existsSync(p)) continue
+    const content = readFileSync(p, 'utf-8')
+    // Skip the raw source template — it references external TSX files
+    if (content.includes('src="./main.tsx"') || content.includes('src="/main.tsx"')) continue
+    return content
   }
   return null
 }
