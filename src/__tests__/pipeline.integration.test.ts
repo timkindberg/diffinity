@@ -1573,6 +1573,85 @@ describe('Explicit vs implicit size scoring', () => {
     expect(boxNode.explicitProps).toContain('width')
     expect(boxNode.explicitProps).toContain('height')
   })
+
+  it('excludes size props whose authored value is a cascade-deference keyword', async () => {
+    function findByTestId(node: any, testId: string): any {
+      if (node.testId === testId) return node
+      for (const child of node.children ?? []) {
+        const found = findByTestId(child, testId)
+        if (found) return found
+      }
+      return null
+    }
+
+    // Each box authors a size prop with a keyword that means "defer to cascade/browser".
+    // None of these should land in explicitProps — they aren't really authored sizes.
+    const html = `<!doctype html><html><body>
+      <style>
+        .auto    { width: auto;         height: 10px; }
+        .initial { width: initial;      height: 10px; }
+        .inherit { width: inherit;      height: 10px; }
+        .unset   { width: unset;        height: 10px; }
+        .revert  { width: revert;       height: 10px; }
+        .rlayer  { width: revert-layer; height: 10px; }
+        .authored { width: 100px;       height: 10px; }
+      </style>
+      <div data-testid="b-auto"     class="auto"></div>
+      <div data-testid="b-initial"  class="initial"></div>
+      <div data-testid="b-inherit"  class="inherit"></div>
+      <div data-testid="b-unset"    class="unset"></div>
+      <div data-testid="b-revert"   class="revert"></div>
+      <div data-testid="b-rlayer"   class="rlayer"></div>
+      <div data-testid="b-authored" class="authored"></div>
+    </body></html>`
+    const manifest = await captureHtml(html)
+
+    for (const id of ['b-auto', 'b-initial', 'b-inherit', 'b-unset', 'b-revert', 'b-rlayer']) {
+      const node = findByTestId(manifest.root, id)
+      expect(node, id).toBeDefined()
+      // width was authored but with a deference keyword — must NOT be in explicitProps
+      expect(node.explicitProps ?? [], id).not.toContain('width')
+      // height was authored with a real length — MUST be in explicitProps
+      expect(node.explicitProps ?? [], id).toContain('height')
+    }
+
+    // Sanity: a real authored value still counts
+    const authored = findByTestId(manifest.root, 'b-authored')
+    expect(authored.explicitProps).toContain('width')
+    expect(authored.explicitProps).toContain('height')
+  })
+
+  it('keeps non-size props authored with "none" (display:none, background-image:none) as explicit', async () => {
+    // Per vr-ijk.27: 'none' is NOT a deference keyword. `display: none` is deliberate
+    // (hiding); `background-image: none` is an explicit reset. Both stay authored.
+    function findByTestId(node: any, testId: string): any {
+      if (!node) return null
+      if (node.testId === testId) return node
+      for (const child of node.children ?? []) {
+        const found = findByTestId(child, testId)
+        if (found) return found
+      }
+      return null
+    }
+
+    const html = `<!doctype html><html><body>
+      <style>
+        .hidden { display: none; }
+        .no-bg  { background-image: none; background-color: rgb(255,0,0); width: 100px; height: 20px; }
+      </style>
+      <div data-testid="b-hidden" class="hidden"></div>
+      <div data-testid="b-no-bg"  class="no-bg"></div>
+    </body></html>`
+    const manifest = await captureHtml(html)
+
+    // display:none elements may be pruned (no bbox); only assert if captured.
+    const hidden = findByTestId(manifest.root, 'b-hidden')
+    if (hidden) expect(hidden.explicitProps ?? []).toContain('display')
+
+    const noBg = findByTestId(manifest.root, 'b-no-bg')
+    expect(noBg).toBeDefined()
+    expect(noBg!.explicitProps ?? []).toContain('background-image')
+  })
 })
 
 // =====================================================================

@@ -237,7 +237,7 @@ function buildBackendNodeIdMap(node: any, map: Map<number, string> = new Map()):
 function captureExplicitPropsInBrowser(styleProps: string[]) {
   const tracked = new Set(styleProps)
   const SIZE_PROPS = new Set(['width', 'height', 'min-width', 'max-width', 'min-height', 'max-height'])
-  const AUTO_VALUES = new Set(['auto', 'initial', 'inherit', 'unset'])
+  const AUTO_VALUES = new Set(['auto', 'initial', 'inherit', 'unset', 'revert', 'revert-layer'])
   const map = new Map<string, Set<string>>()
 
   function addProp(idx: string, prop: string, value?: string) {
