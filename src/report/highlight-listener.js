@@ -69,8 +69,8 @@
   var MARGIN_COLOR = 'rgba(246, 178, 107, 0.55)';
   var PADDING_COLOR = 'rgba(147, 196, 125, 0.55)';
 
-  var PADDING_SIDES = ['padding-top', 'padding-right', 'padding-bottom', 'padding-left'];
-  var MARGIN_SIDES = ['margin-top', 'margin-right', 'margin-bottom', 'margin-left'];
+  var PADDING_SIDES = ['padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'padding'];
+  var MARGIN_SIDES = ['margin-top', 'margin-right', 'margin-bottom', 'margin-left', 'margin'];
 
   var boxOverlays = [];
 
@@ -92,11 +92,20 @@
   function drawBoxModelOverlays(el, changedProps) {
     if (!changedProps || !changedProps.length) return;
     var hasPadding = false, hasMargin = false;
+    // Expand shorthands: 'padding' means all 4 sides changed, 'margin' same
+    var allPadding = changedProps.indexOf('padding') !== -1;
+    var allMargin = changedProps.indexOf('margin') !== -1;
     for (var i = 0; i < changedProps.length; i++) {
       if (PADDING_SIDES.indexOf(changedProps[i]) !== -1) hasPadding = true;
       if (MARGIN_SIDES.indexOf(changedProps[i]) !== -1) hasMargin = true;
     }
     if (!hasPadding && !hasMargin) return;
+    // Helper: check if a specific side changed (or shorthand covers all)
+    function sideChanged(prop) {
+      return changedProps.indexOf(prop) !== -1
+        || (prop.indexOf('padding') === 0 && allPadding)
+        || (prop.indexOf('margin') === 0 && allMargin);
+    }
 
     var cs = getComputedStyle(el);
     var rect = el.getBoundingClientRect();
@@ -111,7 +120,7 @@
       var ml = parseFloat(cs.marginLeft) || 0;
 
       // Top margin
-      if (mt !== 0 && changedProps.indexOf('margin-top') !== -1) {
+      if (mt !== 0 && sideChanged('margin-top')) {
         var ov = getOrCreateBoxOverlay(idx++);
         ov.style.cssText = 'position:absolute;pointer-events:none;z-index:2147483646;display:block;'
           + 'left:' + (rect.left + sx - ml) + 'px;'
@@ -121,7 +130,7 @@
           + 'background:' + MARGIN_COLOR + ';';
       }
       // Bottom margin
-      if (mb !== 0 && changedProps.indexOf('margin-bottom') !== -1) {
+      if (mb !== 0 && sideChanged('margin-bottom')) {
         var ov = getOrCreateBoxOverlay(idx++);
         ov.style.cssText = 'position:absolute;pointer-events:none;z-index:2147483646;display:block;'
           + 'left:' + (rect.left + sx - ml) + 'px;'
@@ -131,7 +140,7 @@
           + 'background:' + MARGIN_COLOR + ';';
       }
       // Left margin
-      if (ml !== 0 && changedProps.indexOf('margin-left') !== -1) {
+      if (ml !== 0 && sideChanged('margin-left')) {
         var ov = getOrCreateBoxOverlay(idx++);
         ov.style.cssText = 'position:absolute;pointer-events:none;z-index:2147483646;display:block;'
           + 'left:' + (rect.left + sx - Math.abs(ml)) + 'px;'
@@ -141,7 +150,7 @@
           + 'background:' + MARGIN_COLOR + ';';
       }
       // Right margin
-      if (mr !== 0 && changedProps.indexOf('margin-right') !== -1) {
+      if (mr !== 0 && sideChanged('margin-right')) {
         var ov = getOrCreateBoxOverlay(idx++);
         ov.style.cssText = 'position:absolute;pointer-events:none;z-index:2147483646;display:block;'
           + 'left:' + (rect.right + sx) + 'px;'
@@ -159,7 +168,7 @@
       var pl = parseFloat(cs.paddingLeft) || 0;
 
       // Top padding
-      if (pt !== 0 && changedProps.indexOf('padding-top') !== -1) {
+      if (pt !== 0 && sideChanged('padding-top')) {
         var ov = getOrCreateBoxOverlay(idx++);
         ov.style.cssText = 'position:absolute;pointer-events:none;z-index:2147483646;display:block;'
           + 'left:' + (rect.left + sx) + 'px;'
@@ -169,7 +178,7 @@
           + 'background:' + PADDING_COLOR + ';';
       }
       // Bottom padding
-      if (pb !== 0 && changedProps.indexOf('padding-bottom') !== -1) {
+      if (pb !== 0 && sideChanged('padding-bottom')) {
         var ov = getOrCreateBoxOverlay(idx++);
         ov.style.cssText = 'position:absolute;pointer-events:none;z-index:2147483646;display:block;'
           + 'left:' + (rect.left + sx) + 'px;'
@@ -179,7 +188,7 @@
           + 'background:' + PADDING_COLOR + ';';
       }
       // Left padding
-      if (pl !== 0 && changedProps.indexOf('padding-left') !== -1) {
+      if (pl !== 0 && sideChanged('padding-left')) {
         var ov = getOrCreateBoxOverlay(idx++);
         ov.style.cssText = 'position:absolute;pointer-events:none;z-index:2147483646;display:block;'
           + 'left:' + (rect.left + sx) + 'px;'
@@ -189,7 +198,7 @@
           + 'background:' + PADDING_COLOR + ';';
       }
       // Right padding
-      if (pr !== 0 && changedProps.indexOf('padding-right') !== -1) {
+      if (pr !== 0 && sideChanged('padding-right')) {
         var ov = getOrCreateBoxOverlay(idx++);
         ov.style.cssText = 'position:absolute;pointer-events:none;z-index:2147483646;display:block;'
           + 'left:' + (rect.right + sx - pr) + 'px;'
