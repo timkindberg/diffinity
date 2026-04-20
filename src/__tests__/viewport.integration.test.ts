@@ -120,7 +120,16 @@ describe('Viewport selector', () => {
   it('uses zoom=1 when the pane is wider than the target viewport', async () => {
     // Switch to single-pane mode so the pane is ~600px wide (wider than 375)
     await page.keyboard.press('2')
+    // Wait for the single-pane CSS class to apply before measuring layout
+    await page.waitForFunction(() => document.querySelector('#html-panes')?.classList.contains('single'))
     await clickViewport(page, '375')
+    // Wait for ResizeObserver+rAF to run applyViewport against the single-pane
+    // layout so iframe.style.zoom reflects the updated (wider) pane width.
+    await page.waitForFunction(() => {
+      const iframe = document.querySelector('#pane-before .iframe-wrap iframe') as HTMLIFrameElement | null
+      const wrap = iframe?.parentElement as HTMLElement | null
+      return !!iframe && !!wrap && wrap.clientWidth > 375 && iframe.style.zoom === '1'
+    })
 
     const styles = await getIframeStyles()
     const before = styles.find(s => s.phase === 'before')!
