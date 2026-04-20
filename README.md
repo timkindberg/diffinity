@@ -17,7 +17,7 @@ The result: "Header background changed from `#1a1a2e` to `#2d2d44` (major)" inst
 
 ## Live demo
 
-See diffinity in action at **[timkindberg.github.io/diffinity](https://timkindberg.github.io/diffinity/)** — three scenarios (targeted CSS fix, flex→grid refactor, full rebrand) plus the full test fixture storybook.
+See diffinity in action at **[timkindberg.github.io/diffinity](https://timkindberg.github.io/diffinity/)** — three scenarios (targeted CSS fix, flex→grid refactor, full rebrand) plus the full test fixture catalog.
 
 ## Install
 
@@ -25,6 +25,8 @@ See diffinity in action at **[timkindberg.github.io/diffinity](https://timkindbe
 npm install diffinity
 npx playwright install chromium  # peer dependency
 ```
+
+Requires Node 20+. Diffinity launches Chromium with `--disable-web-security` internally so it can read cross-origin CSS (Tailwind/Bootstrap CDN, Google Fonts, etc.) via the CSSOM. If you pass in your own Playwright browser instance, you'll want the same flag for the capture to see those stylesheets.
 
 ## Quick start
 
@@ -147,6 +149,8 @@ compare(before: string, after: string, options?: CompareOptions): Promise<void>
 | `reportDir` | `string` | parent of `before` | Directory to write the report |
 | `widths` | `number[]` | auto-detected | Viewport widths to compare |
 
+See `examples/basic.ts` for a minimal end-to-end runnable script.
+
 ### Advanced exports
 
 For custom pipelines, diffinity also exports the internal engine functions:
@@ -179,6 +183,72 @@ The HTML report is a self-contained file you can open in any browser:
 - **Keyboard navigation** — arrow keys to navigate, `V` to cycle viewports, `1`/`2`/`3` for view modes
 - **Color swatches** — inline before/after color previews for all color properties
 
+## How element matching works
+
+The core difficulty in semantic diffing is matching elements across before/after states without reliable IDs. Diffinity's matcher uses a layered identity-signal approach, ranked roughly by strength:
+
+1. **`data-testid`** — most reliable; if both elements share a test ID, they're the same
+2. **Author-provided `id`** — same, minus framework-generated patterns (React `:r0:`, MUI `mui-42`, etc., normalized away)
+3. **ARIA role + accessible name** — works for buttons, headings, inputs, landmarks
+4. **`for` attribute** — labels matched to their inputs
+5. **Ancestor path + tag + position** — fallback for anonymous divs/spans
+
+Each candidate pair gets a score across these signals; pairs that meet a confidence threshold are matched, the rest become "added"/"removed".
+
+This is why diffinity works well on React/Vue apps that don't expose stable ids by default — you don't need to instrument your code, the matcher degrades gracefully.
+
+## How noise reduction works
+
+A naive DOM diff produces hundreds of false positives — computed styles drift in ways that don't reflect author intent. Diffinity's consolidation pipeline applies a stack of targeted suppressions so the default report surfaces only changes a human cares about.
+
+### Authored-vs-computed (explicitProps)
+
+Each captured element carries `explicitProps` — the set of CSS properties actually written by the author (via stylesheet rules or inline styles). Values like `auto`, `initial`, `inherit`, `unset` are excluded, since they mean "browser figures it out."
+
+This matters for scoring. An authored `width: 400px → 200px` is major; a width change caused by flow reflow (sibling grew) is minor. The engine checks the union of before+after `explicitProps` — adding, removing, or changing an authored value all count as authored intent.
+
+### Implicit ancestor suppression
+
+When a descendant's change propagates up the tree (e.g., a child's `font-size` grows, making the parent's computed `height` grow), the ancestor's computed change is suppressed. The user sees the `font-size` diff on the child and nothing else — the cascade isn't reported as noise.
+
+### currentColor border suppression
+
+CSS `border-color`, `outline-color`, `text-decoration-color` default to `currentColor` — they mirror the element's `color` property. When `color` changes, these mirror it in computed styles even though no rule touched them. Diffinity detects this and reports only the `color` diff.
+
+### `1em` margin scaling suppression
+
+The browser's default margins on `<p>` and `<h1–h6>` are `1em` — they scale with `font-size`. When `font-size` changes, those margins change proportionally; the diff on margins is purely derived. Detected and suppressed when `margin == font-size` on both sides.
+
+### Per-property implicit-size stripping
+
+When an element has a mix of authored changes (border-width, border-color) AND implicit size drift (width changed because parent's box changed), the implicit size changes are stripped from the diff rather than suppressing the whole thing. The user sees the real change without the cascade noise hitching a ride.
+
+### Grid-template and flex-item phantom values
+
+When `display: flex → grid`, the browser fabricates concrete `grid-template-rows/columns` values out of nothing. Diffinity recognizes this pattern and suppresses those phantom diffs, keeping only the authored `display` change.
+
+### Shorthand collapse
+
+When all 4 sides of padding/margin/border change to the same value, they collapse to a single `padding: 16px → 32px` entry in the report instead of 4 separate rows. Same for `border-radius`, `border-color`, `border-width`, `border-style`.
+
+### Cascade clustering
+
+When 3+ elements all shift by the same amount in the same direction (e.g., every row in a table dropped 4px), diffinity collapses them into one "cascade cluster" item with a shared root cause, rather than repeating the same diff 30 times.
+
+### Fingerprint grouping
+
+Distinct elements that underwent an identical set of changes — same properties, same before/after values — are grouped into a "Multiple Similar ×N" item with member preview. Common for design-token swaps that touch many elements the same way.
+
+### Zero-height wrapper promotion
+
+Elements with `height: 0` wrappers (common React pattern for accessibility-hidden containers) have their visible descendants promoted into the parent's child list so diffs don't look like they happened on an invisible element.
+
+### Pixel-fidelity verification at capture time
+
+For each element captured, diffinity also pixel-compares its live screenshot against the reconstructed HTML and records a fidelity score. If capture drift occurs, you see it in the report rather than silently diffing incorrect inputs.
+
+---
+
 ## How capture works
 
 Diffinity's HTML capture uses JSON DOM reconstruction rather than `outerHTML` serialization. This preserves "invalid" nesting that React creates via DOM APIs (e.g., `<div>` inside `<tr>`, `<p>` inside `<p>`) which the HTML5 parser would "correct" if serialized through `outerHTML`.
@@ -203,7 +273,7 @@ Locally, you can build the full site with:
 ```bash
 npm run build
 npm run demo          # kitchen-sink app + 3 scenario reports
-npm run demo:fixtures # full test fixture storybook
+npm run demo:fixtures # full test fixture catalog
 npm run demo:landing  # stage the landing page into site/
 ```
 
