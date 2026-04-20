@@ -8,7 +8,7 @@
 
 .sidebar {
   display: grid;
-  grid-template-rows: auto auto;
+  grid-auto-flow: row;
   row-gap: var(--space-5);
 }
 

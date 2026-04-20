@@ -24,6 +24,8 @@ import { readFileSync, existsSync } from 'fs'
 import { createServer, type Server } from 'http'
 import { join, dirname, extname } from 'path'
 import { fileURLToPath } from 'url'
+import pixelmatch from 'pixelmatch'
+import { PNG } from 'pngjs'
 import { capture, compare } from './index.js'
 
 const _dirname = typeof __dirname !== 'undefined'
@@ -186,6 +188,51 @@ async function capturePhase(
   }
 }
 
+/**
+ * Enforce the refactor scenario's "zero visual change" invariant: the flex→grid
+ * sidebar rewrite must produce pixel-identical renders across every page. A
+ * future CSS tweak that accidentally shifts layout will fail the demo build
+ * here rather than silently ship as a passing report.
+ */
+function assertRefactorPixelIdentical(): void {
+  console.log('\n─── Verifying refactor pixel-identity ────────────────')
+  const MAX_MISMATCH_PERCENT = 0.1
+  const failures: string[] = []
+
+  for (const p of PAGES) {
+    const baselinePng = join(CAPTURES_DIR, 'baseline', p.id, `html-${VIEWPORT_WIDTH}`, 'live.png')
+    const refactorPng = join(CAPTURES_DIR, 'refactor', p.id, `html-${VIEWPORT_WIDTH}`, 'live.png')
+    if (!existsSync(baselinePng) || !existsSync(refactorPng)) {
+      failures.push(`${p.title}: missing capture png(s)`)
+      continue
+    }
+
+    const a = PNG.sync.read(readFileSync(baselinePng))
+    const b = PNG.sync.read(readFileSync(refactorPng))
+    if (a.width !== b.width || a.height !== b.height) {
+      failures.push(`${p.title}: size drift ${a.width}x${a.height} vs ${b.width}x${b.height}`)
+      continue
+    }
+
+    const diff = new PNG({ width: a.width, height: a.height })
+    const mismatch = pixelmatch(a.data, b.data, diff.data, a.width, a.height, { threshold: 0.1 })
+    const pct = (mismatch / (a.width * a.height)) * 100
+
+    if (pct > MAX_MISMATCH_PERCENT) {
+      failures.push(`${p.title}: ${mismatch} px differ (${pct.toFixed(3)}%)`)
+    } else {
+      console.log(`  ✓ ${p.title}: ${pct.toFixed(3)}% diff`)
+    }
+  }
+
+  if (failures.length > 0) {
+    console.error(`\n✗ Refactor scenario is NOT pixel-identical (threshold ${MAX_MISMATCH_PERCENT}%):`)
+    for (const f of failures) console.error(`    ${f}`)
+    console.error('\nThe flex→grid refactor must produce zero layout shift. Fix demo-app/src/scenarios/refactor.css.')
+    process.exit(1)
+  }
+}
+
 async function main(): Promise<void> {
   console.log('Diffinity Kitchen-Sink Demo\n')
 
@@ -216,6 +263,8 @@ async function main(): Promise<void> {
     await browser.close()
     server.close()
   }
+
+  assertRefactorPixelIdentical()
 
   console.log('\n─── Generating reports ───────────────────────────────')
   for (const s of SCENARIOS) {
