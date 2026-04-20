@@ -1,0 +1,21 @@
+/* ============================================================
+ * Scenario: TARGETED button redesign
+ * Change ONE component family — primary + secondary buttons.
+ * Expected diff: focused, clustered changes on every .btn-primary
+ * and .btn-secondary; nothing else moves.
+ * ============================================================ */
+
+.btn-primary {
+  background: #10b981;
+  padding: 10px 20px;
+  font-size: 16px;
+  border-radius: 999px;
+}
+
+.btn-secondary {
+  background: #f3f4f6;
+  color: #111827;
+  padding: 10px 20px;
+  font-size: 16px;
+  border-radius: 999px;
+}

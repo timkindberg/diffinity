@@ -47,7 +47,8 @@
     "build:demo-app": "vite build --config demo-app/vite.config.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "demo": "npx tsx src/demo.ts"
+    "demo": "npm run build:report && npm run build:demo-app && npx tsx src/run-demo.ts",
+    "demo:fixtures": "npx tsx src/demo.ts"
   },
   "dependencies": {
     "pixelmatch": "^6.0.0",

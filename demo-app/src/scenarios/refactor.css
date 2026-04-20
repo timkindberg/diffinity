@@ -1,0 +1,19 @@
+/* ============================================================
+ * Scenario: REFACTOR sidebar flex → grid
+ * Goal: ZERO visual diffs. The sidebar looked fine; we're just
+ * modernizing its layout primitive. If diffs appear, they should
+ * be structural (display/flex-* → display/grid-*) or real
+ * sub-pixel shifts worth seeing.
+ * ============================================================ */
+
+.sidebar {
+  display: grid;
+  grid-template-rows: auto auto;
+  row-gap: var(--space-5);
+}
+
+.sidebar-nav {
+  display: grid;
+  grid-auto-flow: row;
+  row-gap: 2px;
+}
