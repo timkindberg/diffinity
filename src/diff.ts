@@ -105,9 +105,12 @@ for (const prop of [
 ]) STYLE_CATEGORIES[prop] = 'grid'
 
 for (const prop of [
-  'position', 'top', 'right', 'bottom', 'left', 'z-index',
-  'overflow-x', 'overflow-y', 'vertical-align',
+  'position', 'top', 'right', 'bottom', 'left', 'vertical-align',
 ]) STYLE_CATEGORIES[prop] = 'position'
+
+for (const prop of [
+  'z-index', 'overflow-x', 'overflow-y',
+]) STYLE_CATEGORIES[prop] = 'visual'
 
 for (const prop of [
   'min-width', 'max-width', 'min-height', 'max-height',

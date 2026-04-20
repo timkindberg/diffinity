@@ -1325,18 +1325,18 @@ describe('Box-shadow elevation', () => {
 // =====================================================================
 
 describe('Z-index stacking', () => {
-  it('detects z-index change on positioned element (raw, suppressed by consolidation)', async () => {
+  it('detects z-index change on positioned element (reported as visual)', async () => {
     const { before, after } = f('Z-index stacking', 'z-index change on positioned element')
     const r = await diffHtml(before, after)
 
-    // z-index is in the 'position' category. Consolidation suppresses position-only diffs,
-    // but the raw diff engine detects the change.
+    // z-index is in the 'visual' category — stacking order changes are
+    // visually meaningful, so they survive consolidation.
     const rawZChanges = r.raw.diffs.flatMap(d => d.changes).filter(c => c.property === 'z-index')
     expect(rawZChanges).toHaveLength(1)
 
-    // Consolidation correctly suppresses position-only changes
-    const consolidated = findDiffByLabel(r, 'overlay')
-    expect(consolidated).toBeUndefined()
+    // Consolidation keeps z-index changes (reclassified from position to visual)
+    const zChanges = allChanges(r).filter(c => c.property === 'z-index')
+    expect(zChanges.length).toBeGreaterThanOrEqual(1)
   })
 })
 
@@ -1345,19 +1345,25 @@ describe('Z-index stacking', () => {
 // =====================================================================
 
 describe('Overflow changes', () => {
-  it('detects overflow hidden to visible (raw, suppressed by consolidation)', async () => {
+  it('detects overflow hidden to visible (reported as visual)', async () => {
     const { before, after } = f('Overflow changes', 'overflow hidden to visible')
     const r = await diffHtml(before, after)
 
-    // overflow-x/y are in the 'position' category. Consolidation suppresses
-    // position-only diffs, but the raw diff engine detects the change.
+    // overflow-x/y are in the 'visual' category — clipping changes are
+    // visually meaningful, so they survive consolidation.
     const rawOverflow = r.raw.diffs.flatMap(d => d.changes).filter(c =>
       c.property === 'overflow-x' || c.property === 'overflow-y'
     )
     expect(rawOverflow.length).toBeGreaterThanOrEqual(1)
+
+    // Consolidation keeps overflow changes (reclassified from position to visual)
+    const overflowChanges = allChanges(r).filter(c =>
+      c.property === 'overflow-x' || c.property === 'overflow-y'
+    )
+    expect(overflowChanges.length).toBeGreaterThanOrEqual(1)
   })
 
-  it('detects overflow visible to hidden (raw, suppressed by consolidation)', async () => {
+  it('detects overflow visible to hidden (reported as visual)', async () => {
     const { before, after } = f('Overflow changes', 'overflow visible to hidden')
     const r = await diffHtml(before, after)
 
@@ -1365,6 +1371,11 @@ describe('Overflow changes', () => {
       c.property === 'overflow-x' || c.property === 'overflow-y'
     )
     expect(rawOverflow.length).toBeGreaterThanOrEqual(1)
+
+    const overflowChanges = allChanges(r).filter(c =>
+      c.property === 'overflow-x' || c.property === 'overflow-y'
+    )
+    expect(overflowChanges.length).toBeGreaterThanOrEqual(1)
   })
 })
 
