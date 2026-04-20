@@ -508,6 +508,33 @@ function collapseCoupledPairs(changes: Change[]): Change[] {
   return result
 }
 
+// ─── Phantom grid-template-* suppression ───────────────────────────
+
+const GRID_TEMPLATE_PROPS = new Set([
+  'grid-template-columns', 'grid-template-rows', 'grid-template-areas',
+])
+
+function isGridDisplay(value: string | null): boolean {
+  return value === 'grid' || value === 'inline-grid'
+}
+
+/**
+ * Suppress phantom grid-template-* changes that only appear because `display`
+ * toggled into or out of a grid context. When display: block → grid, the browser
+ * starts reporting concrete track sizes for grid-template-columns/rows even
+ * though the author never set them. Strip these unless they're in explicitProps.
+ */
+function suppressPhantomGridTemplate(changes: Change[], explicitProps: string[] | undefined): Change[] {
+  const displayChange = changes.find(c => c.property === 'display')
+  if (!displayChange) return changes
+  if (isGridDisplay(displayChange.before) === isGridDisplay(displayChange.after)) return changes
+
+  return changes.filter(c => {
+    if (!GRID_TEMPLATE_PROPS.has(c.property)) return true
+    return explicitProps != null && explicitProps.includes(c.property)
+  })
+}
+
 // ─── Browser-default margin suppression ────────────────────────────
 
 const DEFAULT_MARGIN_PROPS = new Set([
@@ -922,6 +949,23 @@ export function consolidateDiffs(
             suppressedCount++
             continue
           }
+        }
+      }
+    }
+
+    // Suppress phantom grid-template-* changes when display toggles in/out of grid.
+    // The browser reports concrete track sizes once display:grid is active even when
+    // the author never set them — they're derived from the display change.
+    if ((diff.type === 'changed' || diff.type === 'moved+changed') &&
+        changes.some(c => c.property === 'display') &&
+        changes.some(c => GRID_TEMPLATE_PROPS.has(c.property))) {
+      const explicit = getExplicitProps(diff)
+      const filtered = suppressPhantomGridTemplate(changes, explicit)
+      if (filtered.length < changes.length) {
+        changes = filtered
+        if (changes.length === 0) {
+          suppressedCount++
+          continue
         }
       }
     }

@@ -957,3 +957,151 @@ describe('implicit child dimension suppression (display type changes)', () => {
     expect(containerDiff!.changes.some(c => c.property === 'color')).toBe(true)
   })
 })
+
+describe('phantom grid-template-* suppression (display toggles grid)', () => {
+  it('strips grid-template-columns/rows/areas when display changes block → grid', () => {
+    const before = el('body', { children: [
+      el('div', { testId: 'container', styles: {
+        display: 'block',
+        'grid-template-columns': 'none',
+        'grid-template-rows': 'none',
+        'grid-template-areas': 'none',
+      } }),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'container', styles: {
+        display: 'grid',
+        'grid-template-columns': '199px 199px 199px',
+        'grid-template-rows': '100px',
+        'grid-template-areas': 'none',
+      } }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    const containerDiff = consolidated.diffs.find(d => d.label.includes('container'))
+    expect(containerDiff).toBeDefined()
+    // display change should survive
+    expect(containerDiff!.changes.some(c => c.property === 'display')).toBe(true)
+    // phantom grid-template-* should be stripped
+    expect(containerDiff!.changes.some(c => c.property === 'grid-template-columns')).toBe(false)
+    expect(containerDiff!.changes.some(c => c.property === 'grid-template-rows')).toBe(false)
+  })
+
+  it('strips phantom grid-template-* when display changes flex → grid', () => {
+    const before = el('body', { children: [
+      el('div', { testId: 'container', styles: {
+        display: 'flex',
+        'grid-template-columns': 'none',
+        'grid-template-rows': 'none',
+      } }),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'container', styles: {
+        display: 'grid',
+        'grid-template-columns': '150px 150px',
+        'grid-template-rows': '80px',
+      } }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    const containerDiff = consolidated.diffs.find(d => d.label.includes('container'))
+    expect(containerDiff).toBeDefined()
+    expect(containerDiff!.changes.some(c => c.property === 'display')).toBe(true)
+    expect(containerDiff!.changes.some(c => c.property === 'grid-template-columns')).toBe(false)
+    expect(containerDiff!.changes.some(c => c.property === 'grid-template-rows')).toBe(false)
+  })
+
+  it('strips phantom grid-template-* when display changes grid → block (reverse)', () => {
+    const before = el('body', { children: [
+      el('div', { testId: 'container', styles: {
+        display: 'grid',
+        'grid-template-columns': '100px 100px',
+        'grid-template-rows': '50px',
+      } }),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'container', styles: {
+        display: 'block',
+        'grid-template-columns': 'none',
+        'grid-template-rows': 'none',
+      } }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    const containerDiff = consolidated.diffs.find(d => d.label.includes('container'))
+    expect(containerDiff).toBeDefined()
+    expect(containerDiff!.changes.some(c => c.property === 'display')).toBe(true)
+    expect(containerDiff!.changes.some(c => c.property === 'grid-template-columns')).toBe(false)
+    expect(containerDiff!.changes.some(c => c.property === 'grid-template-rows')).toBe(false)
+  })
+
+  it('keeps grid-template-columns when it is in explicitProps (author set it)', () => {
+    const before = el('body', { children: [
+      el('div', { testId: 'container', styles: {
+        display: 'block',
+        'grid-template-columns': 'none',
+      }, explicitProps: ['display', 'grid-template-columns'] }),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'container', styles: {
+        display: 'grid',
+        'grid-template-columns': '1fr 1fr',
+      }, explicitProps: ['display', 'grid-template-columns'] }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    const containerDiff = consolidated.diffs.find(d => d.label.includes('container'))
+    expect(containerDiff).toBeDefined()
+    // explicit grid-template-columns should survive
+    expect(containerDiff!.changes.some(c => c.property === 'grid-template-columns')).toBe(true)
+  })
+
+  it('does not strip grid-template-* when display does not change in/out of grid', () => {
+    // display stays flex, but grid-template-columns somehow changes (should survive)
+    const before = el('body', { children: [
+      el('div', { testId: 'container', styles: {
+        display: 'flex',
+        'grid-template-columns': '100px',
+      } }),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'container', styles: {
+        display: 'inline-flex',
+        'grid-template-columns': '200px',
+      } }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    const containerDiff = consolidated.diffs.find(d => d.label.includes('container'))
+    expect(containerDiff).toBeDefined()
+    // Neither before nor after is grid → phantom suppression should not fire
+    expect(containerDiff!.changes.some(c => c.property === 'grid-template-columns')).toBe(true)
+  })
+
+  it('treats inline-grid as grid (no phantom template diff when toggling inline-grid)', () => {
+    const before = el('body', { children: [
+      el('div', { testId: 'container', styles: {
+        display: 'block',
+        'grid-template-columns': 'none',
+      } }),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'container', styles: {
+        display: 'inline-grid',
+        'grid-template-columns': '100px 100px',
+      } }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    const containerDiff = consolidated.diffs.find(d => d.label.includes('container'))
+    expect(containerDiff).toBeDefined()
+    expect(containerDiff!.changes.some(c => c.property === 'display')).toBe(true)
+    expect(containerDiff!.changes.some(c => c.property === 'grid-template-columns')).toBe(false)
+  })
+})
