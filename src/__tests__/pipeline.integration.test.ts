@@ -1147,22 +1147,22 @@ describe('Children count suppression (pipeline)', () => {
 })
 
 // =====================================================================
-// Section 37: Position-only suppression (P2-14)
+// Section 37: Authored position offsets (P2-14)
 // =====================================================================
 
-describe('Position-only suppression', () => {
-  it('suppresses elements with only position category changes', async () => {
-    const { before, after } = f('Position-only suppression', 'suppresses position-only changes')
+describe('Authored position offsets', () => {
+  it('reports authored top/left changes on positioned elements', async () => {
+    const { before, after } = f('Authored position offsets', 'reports authored top/left changes')
     const r = await diffHtml(before, after)
 
-    // position changes (top, left) are in the 'position' category.
-    // Consolidation drops diffs where ALL changes are bbox or position.
+    // top/left on a positioned element produce real, visible movement —
+    // they must NOT be swept up by the bbox/position-only suppression rule.
     const boxDiff = findDiffByLabel(r, 'box')
-    expect(boxDiff).toBeUndefined()
+    expect(boxDiff).toBeDefined()
 
-    // But raw should have detected it
-    const rawBoxDiff = r.raw.diffs.find(d => d.label.includes('box'))
-    expect(rawBoxDiff).toBeDefined()
+    const props = boxDiff!.changes.map(c => c.property)
+    expect(props).toContain('top')
+    expect(props).toContain('left')
   })
 })
 

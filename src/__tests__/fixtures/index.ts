@@ -1485,9 +1485,9 @@ const s36: TestSection = {
   ],
 }
 
-// Section 37: Position-only suppression (P2-14)
+// Section 37: Authored position offsets (P2-14)
 const s37: TestSection = {
-  name: 'Position-only suppression',
+  name: 'Authored position offsets',
   cases: [
     (() => {
       const html = `<!DOCTYPE html><html><head><style>
@@ -1497,7 +1497,7 @@ const s37: TestSection = {
       <div class="box" data-testid="box">Content</div>
     </body></html>`
       return {
-        name: 'suppresses position-only changes',
+        name: 'reports authored top/left changes',
         before: html,
         after: html.replace('top: 10px; left: 20px', 'top: 30px; left: 40px'),
       }

@@ -105,11 +105,16 @@ for (const prop of [
 ]) STYLE_CATEGORIES[prop] = 'grid'
 
 for (const prop of [
-  'position', 'top', 'right', 'bottom', 'left', 'vertical-align',
+  'position', 'vertical-align',
 ]) STYLE_CATEGORIES[prop] = 'position'
 
+// top/right/bottom/left are authored layout offsets — when the element is
+// positioned (relative/absolute/fixed/sticky) these produce real, visible
+// element movement, so they must NOT be swept up by the position-only
+// suppression rule (which exists to silence passive bbox/position drift).
 for (const prop of [
   'z-index', 'overflow-x', 'overflow-y',
+  'top', 'right', 'bottom', 'left',
 ]) STYLE_CATEGORIES[prop] = 'visual'
 
 for (const prop of [
