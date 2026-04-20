@@ -3,8 +3,8 @@
  * Loads per-viewport DOM manifests, runs element matching + semantic diffing
  * independently per viewport, outputs report data.
  */
-import { readdirSync, readFileSync, writeFileSync, existsSync, statSync, mkdirSync } from 'fs'
-import { join } from 'path'
+import { readdirSync, readFileSync, writeFileSync, existsSync, statSync, mkdirSync, symlinkSync, realpathSync, lstatSync, unlinkSync } from 'fs'
+import { join, relative } from 'path'
 import { diffManifestsByViewport, type ViewportDiffResult } from './viewport-diff.js'
 import type { DomManifest } from './dom-manifest.js'
 
@@ -77,6 +77,33 @@ function loadManifest(phaseDir: string, dirName: string, width: number): DomMani
   const path = join(phaseDir, dirName, `dom-manifest-${width}.json`)
   if (!existsSync(path)) return null
   return JSON.parse(readFileSync(path, 'utf-8'))
+}
+
+/**
+ * Ensure that reportDir/<name> is a directory (or symlink to one) that resolves
+ * to captureDir. No-op if the expected path already matches captureDir.
+ * Creates a relative symlink otherwise (zero-copy, portable for GH Pages,
+ * keeps the report's hardcoded `before/`|`after/` iframe paths working regardless
+ * of where captures actually live).
+ */
+function ensureCaptureLink(reportDir: string, name: 'before' | 'after', captureDir: string): void {
+  const target = join(reportDir, name)
+  const captureReal = realpathSync(captureDir)
+  if (existsSync(target)) {
+    try {
+      if (realpathSync(target) === captureReal) return // already correct
+    } catch { /* broken symlink, fall through to recreate */ }
+    // Path exists but points elsewhere — refuse to clobber a real directory
+    const stat = lstatSync(target)
+    if (!stat.isSymbolicLink()) {
+      throw new Error(`compare(): ${target} is a directory, not a symlink. Refusing to clobber. Move or remove it manually.`)
+    }
+    // Stale symlink — remove and recreate below
+    unlinkSync(target)
+  }
+  // Create relative symlink so the report dir is portable (move + symlinks stay valid)
+  const rel = relative(reportDir, captureReal)
+  symlinkSync(rel, target, 'dir')
 }
 
 // ─── Report template ──────────────────────────────────────────────
@@ -258,6 +285,15 @@ export function compareDirs(options: ComparePageOptions): CompareResult {
   }
 
   mkdirSync(reportDir, { recursive: true })
+
+  // The report's iframe src uses hardcoded `before/<page>/html-<width>/index.html`
+  // and `after/...` paths (relative to the report's index.html). When beforeDir
+  // and afterDir are NOT already at reportDir/before and reportDir/after
+  // (e.g. kitchen-sink demo has captures in site/captures/baseline and scenario reports
+  // in site/scenarios/<id>), ensure relative symlinks exist so iframes can resolve.
+  ensureCaptureLink(reportDir, 'before', beforeDir)
+  ensureCaptureLink(reportDir, 'after', afterDir)
+
   const dataJs = `window.VR_DATA = ${JSON.stringify(vrData)};`
   const dataPath = join(reportDir, 'report-data.js')
   writeFileSync(dataPath, dataJs)
