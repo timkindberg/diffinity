@@ -410,6 +410,55 @@ describe('collapseChanges — padding/margin quad', () => {
   })
 })
 
+describe('collapseChanges — currentColor tracking', () => {
+  it('absorbs border-*-color longhands when they track color', () => {
+    const changes: Change[] = [
+      change({ category: 'typography', property: 'color', before: 'rgb(0, 0, 0)', after: 'rgb(255, 0, 0)' }),
+      change({ category: 'visual', property: 'border-top-color', before: 'rgb(0, 0, 0)', after: 'rgb(255, 0, 0)' }),
+      change({ category: 'visual', property: 'border-bottom-color', before: 'rgb(0, 0, 0)', after: 'rgb(255, 0, 0)' }),
+    ]
+    const result = collapseChanges(changes)
+    expect(result).toHaveLength(1)
+    expect(result[0].property).toBe('color')
+  })
+
+  it('absorbs border-color shorthand when all 4 sides track color', () => {
+    const changes: Change[] = [
+      change({ category: 'typography', property: 'color', before: 'rgb(0, 0, 0)', after: 'rgb(255, 0, 0)' }),
+      change({ category: 'visual', property: 'border-top-color', before: 'rgb(0, 0, 0)', after: 'rgb(255, 0, 0)' }),
+      change({ category: 'visual', property: 'border-right-color', before: 'rgb(0, 0, 0)', after: 'rgb(255, 0, 0)' }),
+      change({ category: 'visual', property: 'border-bottom-color', before: 'rgb(0, 0, 0)', after: 'rgb(255, 0, 0)' }),
+      change({ category: 'visual', property: 'border-left-color', before: 'rgb(0, 0, 0)', after: 'rgb(255, 0, 0)' }),
+    ]
+    // Quad collapse produces border-color shorthand, then foreground collapse absorbs it
+    const result = collapseChanges(changes)
+    expect(result).toHaveLength(1)
+    expect(result[0].property).toBe('color')
+  })
+
+  it('keeps border-color when color did not change (independent border-color change)', () => {
+    const changes: Change[] = [
+      change({ category: 'visual', property: 'border-top-color', before: 'rgb(221, 221, 221)', after: 'rgb(59, 130, 246)' }),
+      change({ category: 'visual', property: 'border-right-color', before: 'rgb(221, 221, 221)', after: 'rgb(59, 130, 246)' }),
+      change({ category: 'visual', property: 'border-bottom-color', before: 'rgb(221, 221, 221)', after: 'rgb(59, 130, 246)' }),
+      change({ category: 'visual', property: 'border-left-color', before: 'rgb(221, 221, 221)', after: 'rgb(59, 130, 246)' }),
+    ]
+    const result = collapseChanges(changes)
+    expect(result).toHaveLength(1)
+    expect(result[0].property).toBe('border-color')
+  })
+
+  it('keeps border-color when before/after do not match color (pinned border)', () => {
+    const changes: Change[] = [
+      change({ category: 'typography', property: 'color', before: 'rgb(0, 0, 0)', after: 'rgb(255, 0, 0)' }),
+      // border-bottom-color changes but lands on a DIFFERENT color than `color`
+      change({ category: 'visual', property: 'border-bottom-color', before: 'rgb(0, 0, 0)', after: 'rgb(0, 128, 0)' }),
+    ]
+    const result = collapseChanges(changes)
+    expect(result).toHaveLength(2)
+  })
+})
+
 describe('collapseChanges — coupled pairs', () => {
   it('drops height when line-height has the same before→after', () => {
     const changes: Change[] = [

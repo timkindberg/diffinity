@@ -1435,12 +1435,17 @@ describe('CSS variable cascade', () => {
     const r = await diffHtml(before, after)
 
     // Changing --primary affects header bg, button bg, link color, badge border/color.
-    // Expect multiple elements to show color/background changes.
-    const allColorAndBg = [...allChanges(r), ...allGroupChanges(r)].filter(c =>
+    // Expect multiple ELEMENTS to reflect the cascade. Identical-fingerprint elements
+    // (e.g. link + badge both showing `color: #3b82f6 → #8b5cf6`) get grouped — count
+    // members, not unique change entries, or groups will hide the cascade breadth.
+    const isColorOrBg = (c: { property: string }) =>
       c.property === 'color' || c.property === 'foreground color' ||
       c.property === 'background-color' || c.property.includes('border-color')
-    )
-    expect(allColorAndBg.length).toBeGreaterThanOrEqual(3)
+    const diffElemCount = r.diffs.filter(d => d.changes.some(isColorOrBg)).length
+    const groupElemCount = r.groups
+      .filter(g => g.changes.some(isColorOrBg))
+      .reduce((sum, g) => sum + g.members.length, 0)
+    expect(diffElemCount + groupElemCount).toBeGreaterThanOrEqual(3)
   })
 })
 

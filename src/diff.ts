@@ -418,7 +418,17 @@ const MARGIN_QUAD = [
   'margin-bottom', 'margin-left',
 ]
 
-const FOREGROUND_COLOR_BUNDLE = ['color', 'text-decoration-color', 'outline-color']
+// Props that default to `currentColor` — if they change in lockstep with `color`,
+// no CSS rule touched them; they're just tracking the foreground. Includes the
+// `border-color` shorthand produced by the border-color quad collapse (which runs
+// before collapseForegroundColor).
+const FOREGROUND_COLOR_BUNDLE = [
+  'color',
+  'text-decoration-color',
+  'outline-color',
+  'border-color',
+  'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color',
+]
 
 const COUPLED_PAIRS: [string, string][] = [
   ['line-height', 'height'],
@@ -429,7 +439,8 @@ const COUPLED_PAIRS: [string, string][] = [
 /**
  * Collapse redundant changes within a single element:
  * - Border quad collapse: 4 identical corner/side changes → 1 shorthand
- * - Foreground color: absorb text-decoration-color / outline-color when they match color
+ * - Foreground color: absorb text-decoration-color / outline-color / border-*-color
+ *   when they change in lockstep with color (they default to currentColor)
  * - Coupled properties: line-height+height with same before→after → 1
  */
 export function collapseChanges(changes: Change[]): Change[] {
