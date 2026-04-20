@@ -15,6 +15,10 @@ Semantic DOM diffing engine for visual regression testing. Unlike pixel-diff too
 
 The result: "Header background changed from `#1a1a2e` to `#2d2d44` (major)" instead of "312 pixels differ."
 
+## Live demo
+
+See diffinity in action at **[timkindberg.github.io/diffinity](https://timkindberg.github.io/diffinity/)** — three scenarios (targeted CSS fix, flex→grid refactor, full rebrand) plus the full test fixture storybook.
+
 ## Install
 
 ```bash
@@ -186,6 +190,24 @@ The process:
 4. Extract data URIs to content-hashed files in a shared `_assets/` directory
 
 After capture, diffinity pixel-compares the reconstructed HTML against the live page to verify fidelity.
+
+## Publishing the demo site
+
+The live demo at [timkindberg.github.io/diffinity](https://timkindberg.github.io/diffinity/) is built and deployed by `.github/workflows/pages.yml` on every push to `main`. To (re)enable Pages for a fork:
+
+1. **Settings → Pages → Build and deployment → Source**: select **GitHub Actions**.
+2. Push to `main` (or trigger the workflow manually from the Actions tab). The first successful run publishes to `https://<user>.github.io/<repo>/`.
+
+Locally, you can build the full site with:
+
+```bash
+npm run build
+npm run demo          # kitchen-sink app + 3 scenario reports
+npm run demo:fixtures # full test fixture storybook
+npm run demo:landing  # stage the landing page into site/
+```
+
+Then open `site/index.html`.
 
 ## License
 

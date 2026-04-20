@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 python3 -c "
 import json, re, sys
 q = sys.argv[1].lower()
-with open('demo/index.html') as f: c = f.read()
+with open('site/fixtures/index.html') as f: c = f.read()
 m = re.search(r'window\.VR_DATA = ({.*?});', c, re.DOTALL)
 data = json.loads(m.group(1))
 for page in data['pages']:

@@ -5,7 +5,7 @@
  * Usage: npm run demo
  *
  * Launches Playwright, runs the full capture→compare pipeline on every fixture,
- * and outputs a single multi-page report at demo/index.html.
+ * and outputs a single multi-page report at site/fixtures/index.html.
  */
 import { chromium } from 'playwright'
 import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
@@ -24,7 +24,7 @@ const _dirname = typeof __dirname !== 'undefined'
   ? __dirname
   : dirname(fileURLToPath(import.meta.url))
 
-const DEMO_DIR = join(_dirname, '..', 'demo')
+const DEMO_DIR = join(_dirname, '..', 'site', 'fixtures')
 const VIEWPORT_WIDTH = 1440
 const VIEWPORT_HEIGHT = 900
 

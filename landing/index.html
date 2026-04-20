@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Diffinity — Semantic DOM diffing for visual regression testing</title>
+  <meta name="description" content="Catch what changed, not just which pixels moved. A semantic DOM diffing engine that explains visual regressions in human terms." />
+  <style>
+    :root {
+      --bg: #ffffff;
+      --surface: #fafafa;
+      --border: #e5e5e8;
+      --border-strong: #d4d4d8;
+      --text: #111114;
+      --text-muted: #55555d;
+      --text-faint: #8a8a94;
+      --accent: #5b4fe0;
+      --accent-hover: #4a3fd0;
+      --accent-soft: #ebe9fc;
+      --radius: 10px;
+      --radius-sm: 6px;
+      --font-sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      font-size: 15px;
+      line-height: 1.6;
+      color: var(--text);
+      background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { color: var(--accent-hover); }
+
+    .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+
+    /* Header / hero */
+    .hero { padding: 96px 0 64px; border-bottom: 1px solid var(--border); }
+    .brand {
+      display: inline-flex; align-items: center; gap: 10px;
+      font-weight: 600; font-size: 15px; letter-spacing: -0.01em;
+      margin-bottom: 32px;
+    }
+    .brand-mark {
+      width: 28px; height: 28px; border-radius: 6px;
+      background: linear-gradient(135deg, var(--accent), #8576f0);
+      display: inline-grid; place-items: center;
+      color: #fff; font-family: var(--font-mono); font-size: 13px; font-weight: 700;
+    }
+    .hero h1 {
+      font-size: 48px; line-height: 1.1; letter-spacing: -0.03em;
+      margin: 0 0 16px; font-weight: 600;
+    }
+    .hero .tagline {
+      font-size: 20px; color: var(--text-muted); margin: 0 0 32px;
+      max-width: 620px; line-height: 1.4;
+    }
+    .hero p { margin: 0 0 16px; max-width: 680px; color: var(--text-muted); }
+    .hero p strong { color: var(--text); font-weight: 600; }
+
+    /* Scenarios */
+    .scenarios { padding: 80px 0 48px; }
+    .scenarios-eyebrow {
+      font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--text-faint); font-weight: 600; margin: 0 0 8px;
+    }
+    .scenarios h2 {
+      font-size: 28px; letter-spacing: -0.02em; margin: 0 0 8px; font-weight: 600;
+    }
+    .scenarios .lede { color: var(--text-muted); margin: 0 0 40px; max-width: 560px; }
+    .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    @media (max-width: 720px) { .tiles { grid-template-columns: 1fr; } }
+
+    .tile {
+      display: flex; flex-direction: column;
+      padding: 24px; border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--bg); transition: border-color 150ms, transform 150ms, box-shadow 150ms;
+    }
+    .tile:hover {
+      border-color: var(--border-strong);
+      transform: translateY(-2px);
+      box-shadow: 0 12px 32px rgba(16, 16, 24, 0.06);
+    }
+    .tile-icon {
+      width: 40px; height: 40px; border-radius: 8px;
+      background: var(--accent-soft); color: var(--accent);
+      display: grid; place-items: center; margin-bottom: 16px;
+      font-family: var(--font-mono); font-size: 18px; font-weight: 700;
+    }
+    .tile h3 { margin: 0 0 6px; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+    .tile p { margin: 0 0 20px; color: var(--text-muted); font-size: 14px; flex: 1; }
+    .tile-cta {
+      align-self: flex-start; font-size: 14px; font-weight: 500;
+      color: var(--accent);
+    }
+    .tile-cta::after { content: ' →'; }
+
+    /* Secondary link */
+    .storybook {
+      margin-top: 48px; padding: 24px; border: 1px dashed var(--border-strong);
+      border-radius: var(--radius); display: flex; align-items: center; justify-content: space-between;
+      gap: 16px; background: var(--surface);
+    }
+    .storybook-copy { color: var(--text-muted); font-size: 14px; }
+    .storybook-copy strong { color: var(--text); font-weight: 600; }
+    .storybook-cta {
+      font-size: 14px; font-weight: 500; white-space: nowrap;
+    }
+    .storybook-cta::after { content: ' →'; }
+
+    /* Footer */
+    footer {
+      margin-top: 80px; padding: 32px 0 48px;
+      border-top: 1px solid var(--border);
+      color: var(--text-faint); font-size: 13px;
+      display: flex; gap: 24px; flex-wrap: wrap; align-items: center;
+    }
+    footer a { color: var(--text-muted); }
+    footer a:hover { color: var(--text); }
+    footer .sep { color: var(--border-strong); }
+    footer .spacer { flex: 1; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <section class="hero">
+      <div class="brand">
+        <span class="brand-mark">D</span>
+        <span>Diffinity</span>
+      </div>
+      <h1>See what changed, not just which pixels moved.</h1>
+      <p class="tagline">Semantic DOM diffing for visual regression testing.</p>
+      <p>
+        Pixel-diff tools flag <strong>every</strong> changed pixel — a 1px border tweak and a full layout reflow look identical.
+        Diffinity captures the DOM tree with computed styles, matches elements across before/after states, and tells you
+        <strong>what</strong> changed in human terms: <em>"Header background changed from #1a1a2e to #2d2d44 (major)"</em>
+        instead of <em>"312 pixels differ."</em>
+      </p>
+      <p>
+        The three scenarios below walk through the shapes of change diffinity is built to handle: a targeted CSS fix,
+        a structural refactor that's visually a no-op, and a full rebrand that cascades across an app.
+      </p>
+    </section>
+
+    <section class="scenarios">
+      <p class="scenarios-eyebrow">Live demo reports</p>
+      <h2>Three scenarios, three reports</h2>
+      <p class="lede">
+        Each report is interactive — hover diff items to highlight them in the captured HTML,
+        cycle viewports with <kbd>V</kbd>, navigate with arrow keys.
+      </p>
+      <div class="tiles">
+        <a class="tile" href="./scenarios/targeted/index.html">
+          <div class="tile-icon">1</div>
+          <h3>Targeted Fix</h3>
+          <p>See a targeted CSS change ripple through the app — no false positives from size changes.</p>
+          <span class="tile-cta">See report</span>
+        </a>
+        <a class="tile" href="./scenarios/refactor/index.html">
+          <div class="tile-icon">2</div>
+          <h3>Refactor Check</h3>
+          <p>Verify a flex → grid refactor produces zero visual change.</p>
+          <span class="tile-cta">See report</span>
+        </a>
+        <a class="tile" href="./scenarios/theme/index.html">
+          <div class="tile-icon">3</div>
+          <h3>Theme Swap</h3>
+          <p>Watch a rebrand cascade across the app — clustered, not spammy.</p>
+          <span class="tile-cta">See report</span>
+        </a>
+      </div>
+
+      <div class="storybook">
+        <div class="storybook-copy">
+          <strong>Want the full tour?</strong> Every test fixture renders as its own before/after pair in the storybook.
+        </div>
+        <a class="storybook-cta" href="./fixtures/index.html">Browse the fixture storybook</a>
+      </div>
+    </section>
+
+    <footer>
+      <span>Diffinity</span>
+      <span class="sep">·</span>
+      <a href="https://github.com/timkindberg/diffinity">GitHub</a>
+      <a href="https://www.npmjs.com/package/diffinity">npm</a>
+      <a href="https://github.com/timkindberg/diffinity/blob/main/LICENSE">MIT License</a>
+      <span class="spacer"></span>
+      <span>© Tim Kindberg</span>
+    </footer>
+  </div>
+</body>
+</html>
