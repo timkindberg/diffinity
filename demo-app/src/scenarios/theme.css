@@ -1,57 +1,47 @@
 /* ============================================================
- * Scenario: THEME full rebrand
- * Swap every design token — colors, radii, typography — to
- * transform "Helix" (light purple) into "Northwind Pro" (dark
- * emerald). Expected diff: many changes, cleanly clustered by
- * token (a dozen elements share --color-primary, etc.).
+ * Scenario: THEME gentle rebrand
+ * Simulate a realistic brand refresh: swap the brand primary
+ * from purple → emerald, nudge neutrals a touch cooler so they
+ * harmonize with the new hue, retune info/warning semantics to
+ * match, and pick up a new type family + softer radii. The app
+ * stays light-themed and instantly recognizable — a viewer
+ * should think "same app, new brand," not "dark mode."
+ *
+ * Expected diff: moderate and cleanly clustered by token —
+ * most changes cascade from --color-primary and its soft tint.
  * The runner also renames "Helix" → "Northwind Pro" in the nav.
  * ============================================================ */
 
 :root {
-  /* Surfaces — light → dark */
-  --color-bg: #0b0d12;
-  --color-surface: #14171d;
-  --color-surface-alt: #1b1f27;
-  --color-surface-hover: #232833;
-  --color-border: #262b35;
-  --color-border-strong: #353b48;
+  /* Surfaces — light, with a whisper of cool tint to complement emerald */
+  --color-bg: #f7f9f8;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f1f4f3;
+  --color-surface-hover: #e9eeec;
+  --color-border: #e2e7e5;
+  --color-border-strong: #cfd6d3;
 
-  /* Text — inverted for dark surfaces */
-  --color-text: #f3f4f6;
-  --color-text-muted: #9ca3af;
-  --color-text-faint: #6b7280;
-  --color-text-inverse: #0b0d12;
-
-  /* Brand + semantic — emerald primary */
+  /* Brand — purple → emerald */
   --color-primary: #10b981;
   --color-primary-hover: #0ea371;
-  --color-primary-soft: #113b30;
-  --color-success: #22c55e;
-  --color-success-soft: #0e2f1f;
-  --color-warning: #f59e0b;
-  --color-warning-soft: #3a2710;
-  --color-danger: #f87171;
-  --color-danger-soft: #3a1515;
-  --color-info: #38bdf8;
-  --color-info-soft: #0f2a3a;
+  --color-primary-soft: #d1fae5;
 
-  /* Typography */
+  /* Semantic — retuned to complement emerald */
+  --color-info: #0891b2;
+  --color-info-soft: #cffafe;
+  --color-warning: #d97706;
+  --color-warning-soft: #fef3c7;
+
+  /* Typography — new brand font */
   --font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-size-base: 15px;
 
-  /* Radius — sharp → friendly */
+  /* Radius — softer, more modern */
   --radius-card: 16px;
   --radius-button: 999px;
 }
 
-/* Brand mark color flip (gradient was tuned for light mode) */
+/* Brand mark gradient: base app hardcodes a purple second stop,
+ * so we override with an emerald-compatible pair. */
 .nav-brand-mark {
-  background: linear-gradient(135deg, #10b981, #6ee7b7);
-  color: #052e1f;
-}
-
-/* Ensure active sidebar link reads against the dark surface */
-.sidebar-link[aria-current="page"] {
-  background: var(--color-primary-soft);
-  color: #6ee7b7;
+  background: linear-gradient(135deg, var(--color-primary), #34d399);
 }
