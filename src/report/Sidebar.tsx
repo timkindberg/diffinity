@@ -59,8 +59,10 @@ export function Sidebar({ pages, selected, activeViewport, dataViewports, focuse
               class={`sb-item${selected === idx ? ' selected' : ''}`}
               onClick={() => onSelect(idx)}
             >
-              <span class="sb-name">{item.page}</span>
-              <span class="sb-role">{item.role}</span>
+              <div class="sb-labels">
+                <span class="sb-name">{item.page}</span>
+                <span class="sb-role">{item.role}</span>
+              </div>
               <span class={`sb-badge ${s.cls}`}>{s.label}</span>
             </div>
           )

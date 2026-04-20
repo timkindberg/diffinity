@@ -133,13 +133,19 @@ kbd {
 .sb-item.selected { background: color-mix(in srgb, var(--accent) 12%, transparent); border-left-color: var(--accent); }
 .sb-item.kb-focused { outline: 1px solid var(--accent); outline-offset: -1px; }
 
+.sb-labels {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;
+}
 .sb-name {
-  flex: 1; font-size: 12px; font-family: var(--mono);
+  font-size: 12px; font-family: var(--mono);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text2);
 }
 .sb-item.selected .sb-name { color: var(--text); }
 
-.sb-role { font-size: 10px; color: var(--text3); background: var(--bg3); padding: 1px 5px; border-radius: 3px; }
+.sb-role {
+  font-size: 10px; color: var(--text3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 .sb-badge { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px; white-space: nowrap; }
 .sb-badge.identical { background: color-mix(in srgb, var(--green) 15%, transparent); color: var(--green); }
