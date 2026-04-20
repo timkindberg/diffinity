@@ -862,18 +862,24 @@ export function consolidateDiffs(
       }
     }
 
-    // Suppress implicit ancestor size changes: if ALL remaining changes are
-    // CASCADE_PROPS (width, height, min-*, max-*) and NONE of those properties
-    // are in explicitProps, the size change is a side-effect of a descendant's
-    // content/style change.
+    // Suppress implicit size changes per-property: strip individual CASCADE_PROPS
+    // (width, height, min-*, max-*) changes when those properties are NOT in
+    // explicitProps, even if the diff has other meaningful changes that should remain.
+    // After stripping, re-score. If all changes stripped, suppress the entire diff.
     if ((diff.type === 'changed' || diff.type === 'moved+changed') &&
-        changes.every(c => CASCADE_PROPS.has(c.property)) &&
-        changes.length > 0) {
+        changes.length > 0 &&
+        changes.some(c => CASCADE_PROPS.has(c.property))) {
       const explicit = getExplicitProps(diff)
-      const hasExplicitCascadeProp = changes.some(c => explicit != null && explicit.includes(c.property))
-      if (!hasExplicitCascadeProp) {
-        suppressedCount++
-        continue
+      const filtered = changes.filter(c => {
+        if (!CASCADE_PROPS.has(c.property)) return true
+        return explicit != null && explicit.includes(c.property)
+      })
+      if (filtered.length < changes.length) {
+        changes = filtered
+        if (changes.length === 0) {
+          suppressedCount++
+          continue
+        }
       }
     }
 

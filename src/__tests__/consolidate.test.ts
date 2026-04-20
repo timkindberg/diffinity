@@ -573,7 +573,7 @@ describe('implicit ancestor size suppression', () => {
     expect(childDiff).toBeUndefined()
   })
 
-  it('does not suppress when element has mixed cascade + non-cascade changes', () => {
+  it('strips implicit cascade props but keeps non-cascade changes from mixed diffs', () => {
     const before = el('body', { children: [
       el('div', { testId: 'card', styles: { height: '50px', color: 'black' }, bbox: { x: 0, y: 0, w: 200, h: 50 } }),
     ]})
@@ -583,10 +583,58 @@ describe('implicit ancestor size suppression', () => {
 
     const { consolidated } = fullPipeline(before, after)
 
-    // Has color change (non-cascade) so the diff should survive
+    // Diff survives because it has a non-cascade change (color)
     const cardDiff = consolidated.diffs.find(d => d.label.includes('card'))
     expect(cardDiff).toBeDefined()
     expect(cardDiff!.changes.some(c => c.property === 'color')).toBe(true)
+    // But the implicit height change should be individually stripped
+    expect(cardDiff!.changes.some(c => c.property === 'height')).toBe(false)
+  })
+
+  it('strips implicit width from mixed border+width diff (parent border change)', () => {
+    // Parent adds a border → child's computed width shrinks (implicit cascade)
+    // The child's diff should keep border-related changes but strip the implicit width
+    const before = el('body', { children: [
+      el('div', { testId: 'container', styles: {
+        'border-top-width': '0px', 'border-top-style': 'none', 'border-top-color': 'rgb(0,0,0)',
+        width: '1406px',
+      }, explicitProps: ['border-top-width', 'border-top-style', 'border-top-color'], bbox: { x: 0, y: 0, w: 1406, h: 400 } }),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'container', styles: {
+        'border-top-width': '3px', 'border-top-style': 'solid', 'border-top-color': 'rgb(255,0,0)',
+        width: '1400px',
+      }, explicitProps: ['border-top-width', 'border-top-style', 'border-top-color'], bbox: { x: 0, y: 0, w: 1400, h: 400 } }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    const containerDiff = consolidated.diffs.find(d => d.label.includes('container'))
+    expect(containerDiff).toBeDefined()
+    // Border changes should survive (explicit)
+    expect(containerDiff!.changes.some(c => c.property.includes('border'))).toBe(true)
+    // Implicit width should be stripped (not in explicitProps)
+    expect(containerDiff!.changes.some(c => c.property === 'width')).toBe(false)
+  })
+
+  it('strips implicit height from body when banner is inserted alongside other changes', () => {
+    // Body has height change (cascade from inserted banner) + children count change
+    const before = el('body', { styles: { height: '178px' }, bbox: { x: 0, y: 0, w: 1440, h: 178 }, children: [
+      el('main', { testId: 'content', styles: { color: 'rgb(0,0,0)' }, text: 'Hello' }),
+    ]})
+    const after = el('body', { styles: { height: '219px', color: 'rgb(255,0,0)' }, bbox: { x: 0, y: 0, w: 1440, h: 219 }, children: [
+      el('div', { testId: 'banner', text: 'New banner!' }),
+      el('main', { testId: 'content', styles: { color: 'rgb(255,0,0)' }, text: 'Hello' }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    // Body diff should exist (it has children count + color changes)
+    // but implicit height should be stripped
+    const bodyDiff = consolidated.diffs.find(d => d.label === 'Container' && d.type === 'changed')
+    if (bodyDiff) {
+      expect(bodyDiff.changes.some(c => c.property === 'height')).toBe(false)
+    }
   })
 })
 

@@ -236,10 +236,13 @@ function buildBackendNodeIdMap(node: any, map: Map<number, string> = new Map()):
  */
 function captureExplicitPropsInBrowser(styleProps: string[]) {
   const tracked = new Set(styleProps)
+  const SIZE_PROPS = new Set(['width', 'height', 'min-width', 'max-width', 'min-height', 'max-height'])
+  const AUTO_VALUES = new Set(['auto', 'initial', 'inherit', 'unset'])
   const map = new Map<string, Set<string>>()
 
-  function addProp(idx: string, prop: string) {
+  function addProp(idx: string, prop: string, value?: string) {
     if (!tracked.has(prop)) return
+    if (value && SIZE_PROPS.has(prop) && AUTO_VALUES.has(value.trim())) return
     let set = map.get(idx)
     if (!set) { set = new Set(); map.set(idx, set) }
     set.add(prop)
@@ -255,7 +258,8 @@ function captureExplicitPropsInBrowser(styleProps: string[]) {
           const idx = el.getAttribute('data-vr-idx')
           if (!idx) continue
           for (let j = 0; j < rule.style.length; j++) {
-            addProp(idx, rule.style[j])
+            const propName = rule.style[j]
+            addProp(idx, propName, rule.style.getPropertyValue(propName))
           }
         }
       } else if ('cssRules' in rule) {
@@ -273,7 +277,8 @@ function captureExplicitPropsInBrowser(styleProps: string[]) {
     if (!(el instanceof HTMLElement)) continue
     const idx = el.getAttribute('data-vr-idx')!
     for (let i = 0; i < el.style.length; i++) {
-      addProp(idx, el.style[i])
+      const propName = el.style[i]
+      addProp(idx, propName, el.style.getPropertyValue(propName))
     }
   }
 
