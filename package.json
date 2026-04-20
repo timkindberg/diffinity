@@ -43,6 +43,8 @@
     "build:lib": "tsup",
     "build:report": "vite build && cp src/report/highlight-listener.js dist/report/",
     "dev:report": "vite",
+    "dev:demo-app": "vite --config demo-app/vite.config.ts",
+    "build:demo-app": "vite build --config demo-app/vite.config.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "demo": "npx tsx src/demo.ts"
