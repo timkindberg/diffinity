@@ -604,6 +604,26 @@ function parsePx(val: string | null): number | null {
 
 const CASCADE_PROPS = new Set(['width', 'height', 'min-width', 'max-width', 'min-height', 'max-height'])
 
+// Properties whose authored change on a flex/grid parent or its children can
+// redistribute space among siblings. When a flex/grid sibling has an authored
+// change to one of these, we preserve sibling elements' implicit width/height
+// changes instead of stripping them — the implicit size shift is the *only*
+// observable evidence of the redistribution (e.g. a flex:1 element shrinking
+// as its sibling's margin grows).
+const LAYOUT_AFFECTING_PROPS = new Set([
+  'width', 'height', 'min-width', 'max-width', 'min-height', 'max-height',
+  'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+  'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+  'flex', 'flex-basis', 'flex-grow', 'flex-shrink',
+  'gap', 'row-gap', 'column-gap',
+  'grid-template-columns', 'grid-template-rows', 'grid-template-areas',
+  'grid-auto-columns', 'grid-auto-rows', 'grid-auto-flow',
+  'order', 'align-self', 'justify-self',
+  'box-sizing',
+])
+
+const FLEX_GRID_DISPLAYS = new Set(['flex', 'inline-flex', 'grid', 'inline-grid'])
+
 function isTransparentColor(color: string | null): boolean {
   if (!color) return true
   if (color === 'transparent') return true
@@ -878,6 +898,49 @@ export function consolidateDiffs(
     }
   }
 
+  // Pre-compute which elements have AUTHORED changes to layout-affecting props.
+  // Used to preserve flex/grid siblings' implicit width/height changes that are
+  // the only visible evidence of a sibling/parent layout redistribution.
+  const authoredLayoutChangeAfterIdx = new Set<number>()
+  const authoredLayoutChangeBeforeIdx = new Set<number>()
+  for (const diff of raw.diffs) {
+    const bNode = diff.beforeIdx != null ? beforeNodes.get(diff.beforeIdx) : undefined
+    const aNode = diff.afterIdx != null ? afterNodes.get(diff.afterIdx) : undefined
+    const explicit = new Set([...(bNode?.explicitProps ?? []), ...(aNode?.explicitProps ?? [])])
+    const hasAuthoredLayoutChange = diff.changes.some(c =>
+      LAYOUT_AFFECTING_PROPS.has(c.property) && explicit.has(c.property))
+    if (!hasAuthoredLayoutChange) continue
+    if (diff.afterIdx != null) authoredLayoutChangeAfterIdx.add(diff.afterIdx)
+    if (diff.beforeIdx != null) authoredLayoutChangeBeforeIdx.add(diff.beforeIdx)
+  }
+
+  /**
+   * True when element `idx` sits under a flex/grid parent AND either the parent
+   * itself or a sibling has an authored layout-affecting change. In that case the
+   * element's implicit width/height change is real evidence of space redistribution
+   * and must not be stripped as cascade noise.
+   */
+  function hasFlexGridSiblingCascade(
+    idx: number | null,
+    parentMap: Map<number, number>,
+    nodeMap: Map<number, ElementNode>,
+    triggerSet: Set<number>,
+  ): boolean {
+    if (idx == null) return false
+    const parentIdx = parentMap.get(idx)
+    if (parentIdx == null) return false
+    const parentNode = nodeMap.get(parentIdx)
+    if (!parentNode) return false
+    const display = parentNode.styles?.display
+    if (typeof display !== 'string' || !FLEX_GRID_DISPLAYS.has(display)) return false
+    if (triggerSet.has(parentIdx)) return true
+    for (const child of parentNode.children) {
+      if (child.idx === idx) continue
+      if (triggerSet.has(child.idx)) return true
+    }
+    return false
+  }
+
   const removedSet = new Set(raw.diffs.filter(d => d.type === 'removed').map(d => d.beforeIdx!))
   const addedSet = new Set(raw.diffs.filter(d => d.type === 'added').map(d => d.afterIdx!))
 
@@ -920,19 +983,30 @@ export function consolidateDiffs(
     // (width, height, min-*, max-*) changes when those properties are NOT in
     // explicitProps, even if the diff has other meaningful changes that should remain.
     // After stripping, re-score. If all changes stripped, suppress the entire diff.
+    //
+    // Exception (vr-jnz): when the element is a flex/grid item and a sibling or
+    // the flex/grid parent has an authored layout-affecting change, preserve the
+    // implicit size change. The sibling cascade is the only visible signal that
+    // the redistributed space reached this element.
     if ((diff.type === 'changed' || diff.type === 'moved+changed') &&
         changes.length > 0 &&
         changes.some(c => CASCADE_PROPS.has(c.property))) {
-      const explicit = getExplicitProps(diff)
-      const filtered = changes.filter(c => {
-        if (!CASCADE_PROPS.has(c.property)) return true
-        return explicit != null && explicit.includes(c.property)
-      })
-      if (filtered.length < changes.length) {
-        changes = filtered
-        if (changes.length === 0) {
-          suppressedCount++
-          continue
+      const inFlexGridCascade =
+        hasFlexGridSiblingCascade(diff.afterIdx, afterParents, afterNodes, authoredLayoutChangeAfterIdx) ||
+        hasFlexGridSiblingCascade(diff.beforeIdx, beforeParents, beforeNodes, authoredLayoutChangeBeforeIdx)
+
+      if (!inFlexGridCascade) {
+        const explicit = getExplicitProps(diff)
+        const filtered = changes.filter(c => {
+          if (!CASCADE_PROPS.has(c.property)) return true
+          return explicit != null && explicit.includes(c.property)
+        })
+        if (filtered.length < changes.length) {
+          changes = filtered
+          if (changes.length === 0) {
+            suppressedCount++
+            continue
+          }
         }
       }
     }

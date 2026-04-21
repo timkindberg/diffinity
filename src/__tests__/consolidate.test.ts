@@ -687,6 +687,96 @@ describe('implicit ancestor size suppression', () => {
   })
 })
 
+describe('flex/grid sibling cascade preservation (vr-jnz)', () => {
+  it('preserves implicit width on flex sibling when another sibling has authored layout change', () => {
+    // Parent is display:flex. Sibling A (.nav-actions) has an authored margin-left change;
+    // Sibling B (.nav-search, flex:1) has its implicit width shrink/grow as a consequence.
+    // Without this fix, B's width change is stripped as "implicit cascade noise" and the
+    // user has no signal that the search input got visibly wider/narrower.
+    const before = el('body', { children: [
+      el('nav', { testId: 'nav', styles: { display: 'flex' }, explicitProps: ['display'], bbox: { x: 0, y: 0, w: 1440, h: 60 }, children: [
+        el('div', { testId: 'nav-brand', styles: {}, bbox: { x: 0, y: 0, w: 100, h: 60 } }),
+        el('div', { testId: 'nav-search', styles: { flex: '1 1 0%', width: '1200px' }, explicitProps: ['flex'], bbox: { x: 100, y: 0, w: 1200, h: 60 } }),
+        el('div', { testId: 'nav-actions', styles: { 'margin-left': '40px' }, explicitProps: ['margin-left'], bbox: { x: 1300, y: 0, w: 140, h: 60 } }),
+      ]}),
+    ]})
+    const after = el('body', { children: [
+      el('nav', { testId: 'nav', styles: { display: 'flex' }, explicitProps: ['display'], bbox: { x: 0, y: 0, w: 1440, h: 60 }, children: [
+        el('div', { testId: 'nav-brand', styles: {}, bbox: { x: 0, y: 0, w: 100, h: 60 } }),
+        el('div', { testId: 'nav-search', styles: { flex: '1 1 0%', width: '1100px' }, explicitProps: ['flex'], bbox: { x: 100, y: 0, w: 1100, h: 60 } }),
+        el('div', { testId: 'nav-actions', styles: { 'margin-left': '140px' }, explicitProps: ['margin-left'], bbox: { x: 1200, y: 0, w: 240, h: 60 } }),
+      ]}),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    // nav-actions' authored margin-left change is reported
+    const actionsDiff = consolidated.diffs.find(d => d.label.includes('nav-actions'))
+    expect(actionsDiff).toBeDefined()
+    expect(actionsDiff!.changes.some(c => c.property === 'margin-left')).toBe(true)
+
+    // nav-search's implicit width change should be preserved (flex sibling cascade)
+    const searchDiff = consolidated.diffs.find(d => d.label.includes('nav-search'))
+    expect(searchDiff).toBeDefined()
+    expect(searchDiff!.changes.some(c => c.property === 'width')).toBe(true)
+  })
+
+  it('preserves implicit widths on flex items when flex parent has authored gap change', () => {
+    // Parent-driven redistribution: .container has authored `gap` change; children
+    // redistribute widths as a consequence. Children's implicit widths should be kept.
+    // (Widths differ between items so identical fingerprints don't fold them into a group
+    // — we want to assert per-item diffs survive, not verify grouping behavior.)
+    const before = el('body', { children: [
+      el('div', { testId: 'container', styles: { display: 'flex', gap: '10px' }, explicitProps: ['display', 'gap'], bbox: { x: 0, y: 0, w: 1000, h: 100 }, children: [
+        el('div', { testId: 'item-a', styles: { flex: '2 1 0%', width: '660px' }, explicitProps: ['flex'], bbox: { x: 0, y: 0, w: 660, h: 100 } }),
+        el('div', { testId: 'item-b', styles: { flex: '1 1 0%', width: '330px' }, explicitProps: ['flex'], bbox: { x: 670, y: 0, w: 330, h: 100 } }),
+      ]}),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'container', styles: { display: 'flex', gap: '50px' }, explicitProps: ['display', 'gap'], bbox: { x: 0, y: 0, w: 1000, h: 100 }, children: [
+        el('div', { testId: 'item-a', styles: { flex: '2 1 0%', width: '633px' }, explicitProps: ['flex'], bbox: { x: 0, y: 0, w: 633, h: 100 } }),
+        el('div', { testId: 'item-b', styles: { flex: '1 1 0%', width: '317px' }, explicitProps: ['flex'], bbox: { x: 683, y: 0, w: 317, h: 100 } }),
+      ]}),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    const aDiff = consolidated.diffs.find(d => d.label.includes('item-a'))
+    expect(aDiff).toBeDefined()
+    expect(aDiff!.changes.some(c => c.property === 'width')).toBe(true)
+    const bDiff = consolidated.diffs.find(d => d.label.includes('item-b'))
+    expect(bDiff).toBeDefined()
+    expect(bDiff!.changes.some(c => c.property === 'width')).toBe(true)
+  })
+
+  it('does NOT preserve implicit width when parent is block (not flex/grid)', () => {
+    // Regression guard: the sibling-cascade rule is narrowly scoped to flex/grid parents.
+    // Block-level siblings do not redistribute the way flex items do, so implicit width
+    // changes there remain noise (e.g., parent border-width adds a few px, child computed
+    // width shrinks — still stripped).
+    const before = el('body', { children: [
+      el('div', { testId: 'parent', styles: {
+        'border-top-width': '0px', 'border-top-style': 'none', 'border-top-color': 'rgb(0,0,0)',
+      }, explicitProps: ['border-top-width', 'border-top-style', 'border-top-color'], bbox: { x: 0, y: 0, w: 1440, h: 400 }, children: [
+        el('div', { testId: 'child', styles: { width: '1390px' }, bbox: { x: 25, y: 0, w: 1390, h: 300 } }),
+      ]}),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'parent', styles: {
+        'border-top-width': '3px', 'border-top-style': 'solid', 'border-top-color': 'rgb(255,0,0)',
+      }, explicitProps: ['border-top-width', 'border-top-style', 'border-top-color'], bbox: { x: 0, y: 0, w: 1440, h: 400 }, children: [
+        el('div', { testId: 'child', styles: { width: '1384px' }, bbox: { x: 25, y: 3, w: 1384, h: 297 } }),
+      ]}),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+
+    // Child's implicit width change should still be suppressed (parent is block, no sibling cascade)
+    const childDiff = consolidated.diffs.find(d => d.label.includes('child'))
+    expect(childDiff).toBeUndefined()
+  })
+})
+
 describe('browser-default margin suppression', () => {
   it('suppresses margin changes that scale with font-size (1em default)', () => {
     // <p> with font-size 16px → 32px: margins are 1em (16px → 32px)
