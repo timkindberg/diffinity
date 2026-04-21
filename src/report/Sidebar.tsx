@@ -20,7 +20,7 @@ function getStatus(item: PageData, activeViewport: number, dataViewports: number
   if (!vpData) return { label: 'unknown', cls: '' }
   if (!vpData.hasBeforeHtml && vpData.hasAfterHtml) return { label: 'new', cls: 'only' }
   if (vpData.hasBeforeHtml && !vpData.hasAfterHtml) return { label: 'removed', cls: 'only' }
-  const t = vpData.summary?.visualChanges ?? 0
+  const t = vpData.summary?.visualChanges ?? vpData.summary?.totalChanges ?? 0
   if (t === 0) return { label: 'identical', cls: 'identical' }
   if (t < 5) return { label: `${t} changes`, cls: 'minor' }
   if (t < 20) return { label: `${t} changes`, cls: 'changed' }
