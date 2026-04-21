@@ -197,7 +197,7 @@ export function App() {
     <>
       <div id="app-header">
         <button id="panel-toggle" title="Toggle sidebar ([)" onClick={() => setSidebarOpen(p => !p)}>[</button>
-        <h1>Semantic Diff Report</h1>
+        <h1>Diffinity Report</h1>
         <div class="header-pills">
           {!!pills.significant && <span class="h-pill" style="color:var(--red)"><span class="h-pill-count">{pills.significant}</span> significant</span>}
           {!!pills.changed && <span class="h-pill" style="color:var(--orange)"><span class="h-pill-count">{pills.changed}</span> changed</span>}

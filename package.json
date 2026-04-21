@@ -51,7 +51,7 @@
     "demo:run": "npm run report:build && npm run demo:build && npx tsx src/run-demo.ts",
     "demo:fixtures": "npx tsx src/demo.ts",
     "demo:landing": "node -e \"require('fs').mkdirSync('site',{recursive:true});require('fs').copyFileSync('landing/index.html','site/index.html');console.log('site/index.html ← landing/index.html')\"",
-    "demo:site": "npm run demo:run && npm run demo:fixtures && npm run demo:landing"
+    "demo:all": "npm run demo:run && npm run demo:fixtures && npm run demo:landing"
   },
   "dependencies": {
     "pixelmatch": "^6.0.0",

@@ -306,16 +306,16 @@ npm run demo:build    # production build of demo-app/ → site/app/
 npm run demo:run       # 3 scenario reports (targeted / refactor / theme)
 npm run demo:fixtures  # full test-fixture catalog
 npm run demo:landing   # stage landing/index.html into site/
-npm run demo:site      # all three above in sequence (what CI runs)
+npm run demo:all      # all three above in sequence (what CI runs)
 ```
 
 Then open `site/index.html`.
 
-> **Do I have to build before running?** `demo:run` internally runs `report:build` and `demo:build` first, so a cold `npm run demo:site` works on a fresh checkout. Use `report:dev` / `demo:dev` only when you want hot reload while editing.
+> **Do I have to build before running?** `demo:run` internally runs `report:build` and `demo:build` first, so a cold `npm run demo:all` works on a fresh checkout. Use `report:dev` / `demo:dev` only when you want hot reload while editing.
 
 ## Publishing the demo site
 
-The live demo at [timkindberg.github.io/diffinity](https://timkindberg.github.io/diffinity/) is built and deployed by `.github/workflows/pages.yml` on every push to `main` (it runs `npm run build && npm run demo:site`). To (re)enable Pages for a fork:
+The live demo at [timkindberg.github.io/diffinity](https://timkindberg.github.io/diffinity/) is built and deployed by `.github/workflows/pages.yml` on every push to `main` (it runs `npm run build && npm run demo:all`). To (re)enable Pages for a fork:
 
 1. **Settings → Pages → Build and deployment → Source**: select **GitHub Actions**.
 2. Push to `main` (or trigger the workflow manually from the Actions tab). The first successful run publishes to `https://<user>.github.io/<repo>/`.

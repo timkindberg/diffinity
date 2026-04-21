@@ -37,7 +37,7 @@ jobs:
         run: npm run build
 
       - name: Build full demo site (scenarios + fixture catalog + landing)
-        run: npm run demo:site
+        run: npm run demo:all
 
       - uses: actions/configure-pages@v5
 
