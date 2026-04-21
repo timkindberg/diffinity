@@ -305,6 +305,16 @@ async function captureJsonDom(
       // Strip capture-only styles (animation/transition freeze) before saving
       for (const s of document.querySelectorAll('style[data-vr-capture-only]')) s.remove()
 
+      // Form control types whose .value property is observable in rendering
+      // (distinct from e.g. type=submit/reset/button/file/image, where the
+      // attribute is the button label — not user-editable state).
+      const VALUE_BEARING_INPUT_TYPES = new Set([
+        'text', 'email', 'password', 'url', 'search', 'tel',
+        'number', 'range', 'color',
+        'date', 'time', 'datetime-local', 'month', 'week',
+        'hidden',
+      ])
+
       // Serialize the DOM tree to JSON — createElement reconstruction bypasses
       // the HTML5 parser, so no nesting fixes are needed.
       function toJsonNode(node: Node): any {
@@ -330,6 +340,37 @@ async function captureJsonDom(
             if (child) children.push(child)
           }
           if (children.length) obj.c = children
+        }
+
+        // Persist form control state from DOM properties. Frameworks like
+        // React/Preact set `value` and `checked` as properties, not attributes,
+        // so `el.attributes` doesn't see them — the reconstruction would lose
+        // initial values and checked states without this.
+        const tag = obj.n
+        if (tag === 'input') {
+          const input = el as HTMLInputElement
+          const type = (input.type || 'text').toLowerCase()
+          if (type === 'checkbox' || type === 'radio') {
+            obj.a = obj.a || {}
+            if (input.checked) obj.a.checked = ''
+            else delete obj.a.checked
+          } else if (VALUE_BEARING_INPUT_TYPES.has(type)) {
+            obj.a = obj.a || {}
+            obj.a.value = input.value
+          }
+        } else if (tag === 'textarea') {
+          const ta = el as HTMLTextAreaElement
+          obj.c = ta.value ? [{ t: 3, v: ta.value }] : undefined
+          if (!obj.c) delete obj.c
+        } else if (tag === 'option') {
+          const opt = el as HTMLOptionElement
+          obj.a = obj.a || {}
+          if (opt.selected) obj.a.selected = ''
+          else delete obj.a.selected
+        } else if (tag === 'details') {
+          obj.a = obj.a || {}
+          if ((el as HTMLDetailsElement).open) obj.a.open = ''
+          else delete obj.a.open
         }
         return obj
       }
