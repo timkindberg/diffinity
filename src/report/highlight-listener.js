@@ -6,8 +6,12 @@
   var css = document.createElement('style');
   css.textContent = [
     '@keyframes vr-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }',
+    '#vr-hl-stage {',
+    '  position: fixed; inset: 0; overflow: hidden; pointer-events: none;',
+    '  z-index: 2147483646;',
+    '}',
     '.vr-hl-overlay {',
-    '  position: absolute; pointer-events: none; z-index: 2147483647;',
+    '  position: absolute; pointer-events: none;',
     '  border-radius: 4px; display: none;',
     '  border: 3px solid var(--vr-hl-color, #f59e0b);',
     '}',
@@ -22,10 +26,10 @@
     '  white-space: nowrap; letter-spacing: 0.04em; text-transform: uppercase;',
     '}',
     '.vr-box-overlay {',
-    '  position: absolute; pointer-events: none; z-index: 2147483646; display: none;',
+    '  position: absolute; pointer-events: none; display: none;',
     '}',
     '#vr-hl-msg {',
-    '  position: absolute; pointer-events: none; z-index: 2147483647; display: none;',
+    '  position: absolute; pointer-events: none; display: none;',
     '  background: #1e293b; color: #fbbf24;',
     '  font: 600 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;',
     '  padding: 8px 14px; border-radius: 6px; border: 2px solid #f59e0b;',
@@ -34,9 +38,15 @@
   ].join('\n');
   document.head.appendChild(css);
 
+  // Single fixed, clipped stage containing all overlay DOM. overflow:hidden
+  // guarantees nothing we position can expand the document's scrollable area.
+  var stage = document.createElement('div');
+  stage.id = 'vr-hl-stage';
+  document.body.appendChild(stage);
+
   var msgEl = document.createElement('div');
   msgEl.id = 'vr-hl-msg';
-  document.body.appendChild(msgEl);
+  stage.appendChild(msgEl);
 
   var overlays = [];
   var flashTimer = null;
@@ -84,7 +94,7 @@
     if (boxOverlays[index]) return boxOverlays[index];
     var el = document.createElement('div');
     el.className = 'vr-box-overlay';
-    document.body.appendChild(el);
+    stage.appendChild(el);
     boxOverlays[index] = el;
     return el;
   }
@@ -109,8 +119,6 @@
 
     var cs = getComputedStyle(el);
     var rect = el.getBoundingClientRect();
-    var sx = window.scrollX;
-    var sy = window.scrollY;
     var idx = 0;
 
     if (hasMargin) {
@@ -122,9 +130,9 @@
       // Top margin
       if (mt !== 0 && sideChanged('margin-top')) {
         var ov = getOrCreateBoxOverlay(idx++);
-        ov.style.cssText = 'position:absolute;pointer-events:none;z-index:2147483646;display:block;'
-          + 'left:' + (rect.left + sx - ml) + 'px;'
-          + 'top:' + (rect.top + sy - Math.abs(mt)) + 'px;'
+        ov.style.cssText = 'position:absolute;pointer-events:none;display:block;'
+          + 'left:' + (rect.left - ml) + 'px;'
+          + 'top:' + (rect.top - Math.abs(mt)) + 'px;'
           + 'width:' + (rect.width + ml + mr) + 'px;'
           + 'height:' + Math.abs(mt) + 'px;'
           + 'background:' + MARGIN_COLOR + ';';
@@ -132,9 +140,9 @@
       // Bottom margin
       if (mb !== 0 && sideChanged('margin-bottom')) {
         var ov = getOrCreateBoxOverlay(idx++);
-        ov.style.cssText = 'position:absolute;pointer-events:none;z-index:2147483646;display:block;'
-          + 'left:' + (rect.left + sx - ml) + 'px;'
-          + 'top:' + (rect.bottom + sy) + 'px;'
+        ov.style.cssText = 'position:absolute;pointer-events:none;display:block;'
+          + 'left:' + (rect.left - ml) + 'px;'
+          + 'top:' + rect.bottom + 'px;'
           + 'width:' + (rect.width + ml + mr) + 'px;'
           + 'height:' + Math.abs(mb) + 'px;'
           + 'background:' + MARGIN_COLOR + ';';
@@ -142,9 +150,9 @@
       // Left margin
       if (ml !== 0 && sideChanged('margin-left')) {
         var ov = getOrCreateBoxOverlay(idx++);
-        ov.style.cssText = 'position:absolute;pointer-events:none;z-index:2147483646;display:block;'
-          + 'left:' + (rect.left + sx - Math.abs(ml)) + 'px;'
-          + 'top:' + (rect.top + sy) + 'px;'
+        ov.style.cssText = 'position:absolute;pointer-events:none;display:block;'
+          + 'left:' + (rect.left - Math.abs(ml)) + 'px;'
+          + 'top:' + rect.top + 'px;'
           + 'width:' + Math.abs(ml) + 'px;'
           + 'height:' + rect.height + 'px;'
           + 'background:' + MARGIN_COLOR + ';';
@@ -152,9 +160,9 @@
       // Right margin
       if (mr !== 0 && sideChanged('margin-right')) {
         var ov = getOrCreateBoxOverlay(idx++);
-        ov.style.cssText = 'position:absolute;pointer-events:none;z-index:2147483646;display:block;'
-          + 'left:' + (rect.right + sx) + 'px;'
-          + 'top:' + (rect.top + sy) + 'px;'
+        ov.style.cssText = 'position:absolute;pointer-events:none;display:block;'
+          + 'left:' + rect.right + 'px;'
+          + 'top:' + rect.top + 'px;'
           + 'width:' + Math.abs(mr) + 'px;'
           + 'height:' + rect.height + 'px;'
           + 'background:' + MARGIN_COLOR + ';';
@@ -170,9 +178,9 @@
       // Top padding
       if (pt !== 0 && sideChanged('padding-top')) {
         var ov = getOrCreateBoxOverlay(idx++);
-        ov.style.cssText = 'position:absolute;pointer-events:none;z-index:2147483646;display:block;'
-          + 'left:' + (rect.left + sx) + 'px;'
-          + 'top:' + (rect.top + sy) + 'px;'
+        ov.style.cssText = 'position:absolute;pointer-events:none;display:block;'
+          + 'left:' + rect.left + 'px;'
+          + 'top:' + rect.top + 'px;'
           + 'width:' + rect.width + 'px;'
           + 'height:' + pt + 'px;'
           + 'background:' + PADDING_COLOR + ';';
@@ -180,9 +188,9 @@
       // Bottom padding
       if (pb !== 0 && sideChanged('padding-bottom')) {
         var ov = getOrCreateBoxOverlay(idx++);
-        ov.style.cssText = 'position:absolute;pointer-events:none;z-index:2147483646;display:block;'
-          + 'left:' + (rect.left + sx) + 'px;'
-          + 'top:' + (rect.bottom + sy - pb) + 'px;'
+        ov.style.cssText = 'position:absolute;pointer-events:none;display:block;'
+          + 'left:' + rect.left + 'px;'
+          + 'top:' + (rect.bottom - pb) + 'px;'
           + 'width:' + rect.width + 'px;'
           + 'height:' + pb + 'px;'
           + 'background:' + PADDING_COLOR + ';';
@@ -190,9 +198,9 @@
       // Left padding
       if (pl !== 0 && sideChanged('padding-left')) {
         var ov = getOrCreateBoxOverlay(idx++);
-        ov.style.cssText = 'position:absolute;pointer-events:none;z-index:2147483646;display:block;'
-          + 'left:' + (rect.left + sx) + 'px;'
-          + 'top:' + (rect.top + sy + pt) + 'px;'
+        ov.style.cssText = 'position:absolute;pointer-events:none;display:block;'
+          + 'left:' + rect.left + 'px;'
+          + 'top:' + (rect.top + pt) + 'px;'
           + 'width:' + pl + 'px;'
           + 'height:' + (rect.height - pt - pb) + 'px;'
           + 'background:' + PADDING_COLOR + ';';
@@ -200,9 +208,9 @@
       // Right padding
       if (pr !== 0 && sideChanged('padding-right')) {
         var ov = getOrCreateBoxOverlay(idx++);
-        ov.style.cssText = 'position:absolute;pointer-events:none;z-index:2147483646;display:block;'
-          + 'left:' + (rect.right + sx - pr) + 'px;'
-          + 'top:' + (rect.top + sy + pt) + 'px;'
+        ov.style.cssText = 'position:absolute;pointer-events:none;display:block;'
+          + 'left:' + (rect.right - pr) + 'px;'
+          + 'top:' + (rect.top + pt) + 'px;'
           + 'width:' + pr + 'px;'
           + 'height:' + (rect.height - pt - pb) + 'px;'
           + 'background:' + PADDING_COLOR + ';';
@@ -219,7 +227,7 @@
     var label = document.createElement('span');
     label.className = 'vr-hl-label';
     el.appendChild(label);
-    document.body.appendChild(el);
+    stage.appendChild(el);
     overlays[index] = el;
     return el;
   }
@@ -241,10 +249,8 @@
   }
 
   function positionOverlay(ov, rect, color) {
-    var sx = window.scrollX;
-    var sy = window.scrollY;
-    ov.style.left = (rect.left + sx - PADDING) + 'px';
-    ov.style.top = (rect.top + sy - PADDING) + 'px';
+    ov.style.left = (rect.left - PADDING) + 'px';
+    ov.style.top = (rect.top - PADDING) + 'px';
     ov.style.width = (rect.width + PADDING * 2) + 'px';
     ov.style.height = (rect.height + PADDING * 2) + 'px';
     ov.style.setProperty('--vr-hl-color', color);
@@ -299,10 +305,8 @@
 
         if (ovIndex === 0) {
           msgEl.textContent = 'Element not visible at current zoom';
-          var sx = window.scrollX;
-          var sy = window.scrollY;
-          msgEl.style.left = (aRect.left + sx) + 'px';
-          msgEl.style.top = (aRect.bottom + sy + 6) + 'px';
+          msgEl.style.left = aRect.left + 'px';
+          msgEl.style.top = (aRect.bottom + 6) + 'px';
           msgEl.style.display = 'block';
         }
       }
