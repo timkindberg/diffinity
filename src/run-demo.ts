@@ -189,17 +189,15 @@ async function capturePhase(
 }
 
 /**
- * Report on the refactor scenario's "zero visual change" goal: the flex→grid
- * sidebar rewrite should produce pixel-identical renders across every page.
- *
- * Currently advisory — prints a warning but does not fail the build. Once the
- * refactor.css is tightened to hit the threshold on every page, flip
- * ENFORCE_PIXEL_IDENTITY to true to re-enable CI enforcement.
+ * Enforce the refactor scenario's "zero visual change" invariant: the flex→grid
+ * sidebar rewrite must produce pixel-identical renders across every page. A
+ * future CSS tweak that accidentally shifts layout will fail the demo build
+ * here rather than silently ship as a passing report.
  */
 function assertRefactorPixelIdentical(): void {
   console.log('\n─── Verifying refactor pixel-identity ────────────────')
   const MAX_MISMATCH_PERCENT = 0.1
-  const ENFORCE_PIXEL_IDENTITY = false
+  const ENFORCE_PIXEL_IDENTITY = true
   const failures: string[] = []
 
   for (const p of PAGES) {

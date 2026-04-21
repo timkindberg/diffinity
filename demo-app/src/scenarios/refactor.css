@@ -9,6 +9,11 @@
 .sidebar {
   display: grid;
   grid-auto-flow: row;
+  /* Parent .app-body is flex-row with align-items: stretch, so .sidebar is
+     taller than its content. Flex column packs items to the top by default;
+     grid's default align-content (normal → stretch for auto rows) would
+     distribute the extra space between rows, pushing Insights down. */
+  align-content: start;
   row-gap: var(--space-5);
 }
 
