@@ -17,10 +17,28 @@ import type { ElementNode, DomManifest } from './dom-manifest.js'
 
 export type VisualImpactVerdict = 'visual' | 'pixel-identical'
 
+/**
+ * Why a diff landed in the "not visible in the static capture" panel.
+ * Only populated when `verdict === 'pixel-identical'`.
+ *
+ *  - `no-delta`         — pixelmatch returned zero mismatched pixels.
+ *  - `below-threshold`  — mismatch > 0 but ≤ maxMismatchPercent.
+ *  - `same-computed`    — all authored CSS changes resolve to identical values
+ *                         once font stacks / quotes / casing are normalized;
+ *                         a stronger claim than `no-delta`. Set in a later pass
+ *                         (see compare-v2.ts) because it requires access to the
+ *                         diff's `changes`, which visual-impact.ts doesn't see.
+ */
+export type VisualImpactReason =
+  | 'no-delta'
+  | 'below-threshold'
+  | 'same-computed'
+
 export type VisualImpact = {
   mismatchPixels: number
   mismatchPercent: number
   verdict: VisualImpactVerdict
+  reason?: VisualImpactReason
 }
 
 export type ClassifyOptions = {
@@ -83,12 +101,13 @@ export function classifyElementPair(
   const mismatchPixels = pixelmatch(bc.data, ac.data, diffImg.data, bc.width, bc.height, { threshold })
   const total = bc.width * bc.height
   const mismatchPercent = total > 0 ? (mismatchPixels / total) * 100 : 0
+  const verdict: VisualImpactVerdict = mismatchPercent <= maxMismatchPercent ? 'pixel-identical' : 'visual'
 
-  return {
-    mismatchPixels,
-    mismatchPercent,
-    verdict: mismatchPercent <= maxMismatchPercent ? 'pixel-identical' : 'visual',
+  const impact: VisualImpact = { mismatchPixels, mismatchPercent, verdict }
+  if (verdict === 'pixel-identical') {
+    impact.reason = mismatchPixels === 0 ? 'no-delta' : 'below-threshold'
   }
+  return impact
 }
 
 export type ClassifyContext = {
@@ -153,6 +172,11 @@ export function aggregateImpact(memberImpacts: (VisualImpact | null)[]): VisualI
   let totalMismatchPixels = 0
   let totalMismatchPercent = 0
   let classified = 0
+  // Track per-member reason so we only report one when the whole group agrees.
+  // Mixed reasons (e.g. some no-delta + some below-threshold) leave reason unset;
+  // the demoted-panel header will still show the aggregate count.
+  let sharedReason: VisualImpactReason | undefined
+  let reasonSeeded = false
   for (const impact of memberImpacts) {
     if (!impact) return null
     if (impact.verdict === 'visual') {
@@ -165,10 +189,18 @@ export function aggregateImpact(memberImpacts: (VisualImpact | null)[]): VisualI
     totalMismatchPixels += impact.mismatchPixels
     totalMismatchPercent += impact.mismatchPercent
     classified++
+    if (!reasonSeeded) {
+      sharedReason = impact.reason
+      reasonSeeded = true
+    } else if (sharedReason !== impact.reason) {
+      sharedReason = undefined
+    }
   }
-  return {
+  const agg: VisualImpact = {
     mismatchPixels: totalMismatchPixels,
     mismatchPercent: classified > 0 ? totalMismatchPercent / classified : 0,
     verdict: 'pixel-identical',
   }
+  if (sharedReason) agg.reason = sharedReason
+  return agg
 }

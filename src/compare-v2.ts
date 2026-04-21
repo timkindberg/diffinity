@@ -8,6 +8,7 @@ import { join, relative } from 'path'
 import { diffManifestsByViewport, type ViewportDiffResult } from './viewport-diff.js'
 import type { DomManifest } from './dom-manifest.js'
 import { classifyPairs, aggregateImpact, type Pair, type VisualImpact } from './visual-impact.js'
+import { areChangesSameComputed } from './visual-reason.js'
 
 export type ComparePageOptions = {
   /** Directory containing 'before' captures */
@@ -251,6 +252,27 @@ function classifyViewportVisualImpact(input: ClassifyViewportInput): void {
   for (const c of viewportDiff.cascadeClusters) {
     const agg = classifyGroup(c.members)
     if (agg) c.visualImpact = agg
+  }
+
+  // Pass 2: upgrade `no-delta` to `same-computed` where we can prove the
+  // textual diff resolves to equivalent CSS (font-stack fallback cases,
+  // quote/case noise). `same-computed` is a strictly stronger claim than
+  // `no-delta` — it says "this diff shouldn't have existed" rather than
+  // "this diff had no effect HERE". Cascade clusters are left alone: they
+  // track numeric size deltas by definition, not CSS-string equivalence.
+  for (const d of viewportDiff.diffs) {
+    if (d.visualImpact?.verdict === 'pixel-identical'
+      && d.visualImpact.reason === 'no-delta'
+      && areChangesSameComputed(d.changes)) {
+      d.visualImpact.reason = 'same-computed'
+    }
+  }
+  for (const g of viewportDiff.groups) {
+    if (g.visualImpact?.verdict === 'pixel-identical'
+      && g.visualImpact.reason === 'no-delta'
+      && areChangesSameComputed(g.changes)) {
+      g.visualImpact.reason = 'same-computed'
+    }
   }
 
   recomputeVisualStructuralCounts(viewportDiff)

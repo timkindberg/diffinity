@@ -111,16 +111,62 @@ describe('classifyElementPair', () => {
     expect(loose!.verdict).toBe('pixel-identical')
     expect(strict!.verdict).toBe('visual')
   })
+
+  it('tags pixel-identical with reason: no-delta when zero pixels differ', () => {
+    const before = solidPng(100, 100, [255, 255, 255, 255])
+    const after = solidPng(100, 100, [255, 255, 255, 255])
+    const bn = el('div', { bbox: { x: 0, y: 0, w: 100, h: 100 } })
+    const an = el('div', { bbox: { x: 0, y: 0, w: 100, h: 100 } })
+    const impact = classifyElementPair(before, after, bn, an)
+    expect(impact!.reason).toBe('no-delta')
+  })
+
+  it('tags pixel-identical with reason: below-threshold when some pixels differ but stay under tolerance', () => {
+    // 9 mismatched pixels on a 1M-pixel element is well under the 0.1% default.
+    const before = solidPng(1000, 1000, [255, 255, 255, 255])
+    const after = solidPng(1000, 1000, [255, 255, 255, 255], [
+      { x: 0, y: 0, w: 3, h: 3, color: [255, 0, 0, 255] },
+    ])
+    const bn = el('div', { bbox: { x: 0, y: 0, w: 1000, h: 1000 } })
+    const an = el('div', { bbox: { x: 0, y: 0, w: 1000, h: 1000 } })
+    const impact = classifyElementPair(before, after, bn, an)
+    expect(impact!.verdict).toBe('pixel-identical')
+    expect(impact!.reason).toBe('below-threshold')
+  })
+
+  it('leaves reason unset on visual verdicts', () => {
+    const before = solidPng(200, 200, [255, 255, 255, 255])
+    const after = solidPng(200, 200, [255, 255, 255, 255], [
+      { x: 20, y: 20, w: 60, h: 30, color: [255, 0, 0, 255] },
+    ])
+    const bn = el('div', { bbox: { x: 10, y: 10, w: 100, h: 50 } })
+    const an = el('div', { bbox: { x: 10, y: 10, w: 100, h: 50 } })
+    const impact = classifyElementPair(before, after, bn, an)
+    expect(impact!.verdict).toBe('visual')
+    expect(impact!.reason).toBeUndefined()
+  })
 })
 
 describe('aggregateImpact', () => {
   const visual: VisualImpact = { mismatchPixels: 10, mismatchPercent: 1, verdict: 'visual' }
-  const identical: VisualImpact = { mismatchPixels: 0, mismatchPercent: 0, verdict: 'pixel-identical' }
+  const identical: VisualImpact = { mismatchPixels: 0, mismatchPercent: 0, verdict: 'pixel-identical', reason: 'no-delta' }
+  const belowThreshold: VisualImpact = { mismatchPixels: 5, mismatchPercent: 0.01, verdict: 'pixel-identical', reason: 'below-threshold' }
 
   it('aggregates pixel-identical when every member is pixel-identical', () => {
     const agg = aggregateImpact([identical, identical, identical])
     expect(agg).not.toBeNull()
     expect(agg!.verdict).toBe('pixel-identical')
+  })
+
+  it('propagates reason when every member agrees', () => {
+    const agg = aggregateImpact([identical, identical, identical])
+    expect(agg!.reason).toBe('no-delta')
+  })
+
+  it('drops reason when members disagree on why they are pixel-identical', () => {
+    const agg = aggregateImpact([identical, belowThreshold])
+    expect(agg!.verdict).toBe('pixel-identical')
+    expect(agg!.reason).toBeUndefined()
   })
 
   it('flips to visual if any member has real pixel delta', () => {
