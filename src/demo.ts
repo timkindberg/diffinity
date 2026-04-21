@@ -2,7 +2,7 @@
 /**
  * Demo runner — generates a visual report from all shared test fixtures.
  *
- * Usage: npm run demo
+ * Usage: npm run demo:fixtures
  *
  * Launches Playwright, runs the full capture→compare pipeline on every fixture,
  * and outputs a single multi-page report at site/fixtures/index.html.

@@ -36,14 +36,8 @@ jobs:
       - name: Build library + report bundle
         run: npm run build
 
-      - name: Build kitchen-sink demo (app + 3 scenario reports)
-        run: npm run demo
-
-      - name: Build fixture storybook
-        run: npm run demo:fixtures
-
-      - name: Stage landing page into site/
-        run: npm run demo:landing
+      - name: Build full demo site (scenarios + fixture catalog + landing)
+        run: npm run demo:site
 
       - uses: actions/configure-pages@v5
 

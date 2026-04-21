@@ -261,23 +261,64 @@ The process:
 
 After capture, diffinity pixel-compares the reconstructed HTML against the live page to verify fidelity.
 
-## Publishing the demo site
+## Development
 
-The live demo at [timkindberg.github.io/diffinity](https://timkindberg.github.io/diffinity/) is built and deployed by `.github/workflows/pages.yml` on every push to `main`. To (re)enable Pages for a fork:
-
-1. **Settings → Pages → Build and deployment → Source**: select **GitHub Actions**.
-2. Push to `main` (or trigger the workflow manually from the Actions tab). The first successful run publishes to `https://<user>.github.io/<repo>/`.
-
-Locally, you can build the full site with:
+Clone and set up:
 
 ```bash
-npm run build
-npm run demo          # kitchen-sink app + 3 scenario reports
-npm run demo:fixtures # full test fixture catalog
-npm run demo:landing  # stage the landing page into site/
+git clone https://github.com/timkindberg/diffinity.git
+cd diffinity
+npm install
+npx playwright install chromium
+```
+
+### Scripts
+
+The scripts are grouped into three namespaces: core library, `report:*` (the Preact app embedded in every diff report), and `demo:*` (the kitchen-sink site diffinity captures in scenarios, plus the landing page and fixture catalog).
+
+**Library + tests:**
+
+```bash
+npm test              # run tests once
+npm run test:watch    # watch mode
+npm run typecheck     # tsc --noEmit
+npm run build         # full build: library + report bundle (what `npm publish` ships)
+npm run lib:build     # library only (tsup, no report bundle) — fast iteration when you aren't touching src/report/
+```
+
+**Iterate on the report UI** (the interactive HTML diff report):
+
+```bash
+npm run report:dev    # vite dev server with hot reload, points at src/report/
+npm run report:build  # production build → dist/report/ (bundled into `npm run build`)
+```
+
+**Iterate on the demo app** (the "Helix Ops Console" sample site that scenarios capture):
+
+```bash
+npm run demo:dev      # vite dev server for demo-app/, hot reload
+npm run demo:build    # production build of demo-app/ → site/app/
+```
+
+**Run the full demo pipeline locally** (end-to-end — what GitHub Pages ships):
+
+```bash
+npm run demo:run       # 3 scenario reports (targeted / refactor / theme)
+npm run demo:fixtures  # full test-fixture catalog
+npm run demo:landing   # stage landing/index.html into site/
+npm run demo:site      # all three above in sequence (what CI runs)
 ```
 
 Then open `site/index.html`.
+
+> **Do I have to build before running?** `demo:run` internally runs `report:build` and `demo:build` first, so a cold `npm run demo:site` works on a fresh checkout. Use `report:dev` / `demo:dev` only when you want hot reload while editing.
+
+## Publishing the demo site
+
+The live demo at [timkindberg.github.io/diffinity](https://timkindberg.github.io/diffinity/) is built and deployed by `.github/workflows/pages.yml` on every push to `main` (it runs `npm run build && npm run demo:site`). To (re)enable Pages for a fork:
+
+1. **Settings → Pages → Build and deployment → Source**: select **GitHub Actions**.
+2. Push to `main` (or trigger the workflow manually from the Actions tab). The first successful run publishes to `https://<user>.github.io/<repo>/`.
 
 ## License
 

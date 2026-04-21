@@ -2,7 +2,7 @@
  * Shared test fixtures — before/after HTML pairs for every pipeline integration test section.
  *
  * This module is the single source of truth for HTML fixtures.
- * Both `pipeline.integration.test.ts` and `npm run demo` import from here.
+ * Both `pipeline.integration.test.ts` and `npm run demo:fixtures` import from here.
  *
  * Fixtures are pure data: each case is a { name, before, after } triple.
  * Assertions live in the test file, not here.

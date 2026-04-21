@@ -39,17 +39,19 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup && npm run build:report",
-    "build:lib": "tsup",
-    "build:report": "vite build && cp src/report/highlight-listener.js dist/report/",
-    "dev:report": "vite",
-    "dev:demo-app": "vite --config demo-app/vite.config.ts",
-    "build:demo-app": "vite build --config demo-app/vite.config.ts",
+    "build": "npm run lib:build && npm run report:build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "demo": "npm run build:report && npm run build:demo-app && npx tsx src/run-demo.ts",
+    "typecheck": "tsc --noEmit",
+    "lib:build": "tsup",
+    "report:dev": "vite",
+    "report:build": "vite build && cp src/report/highlight-listener.js dist/report/",
+    "demo:dev": "vite --config demo-app/vite.config.ts",
+    "demo:build": "vite build --config demo-app/vite.config.ts",
+    "demo:run": "npm run report:build && npm run demo:build && npx tsx src/run-demo.ts",
     "demo:fixtures": "npx tsx src/demo.ts",
-    "demo:landing": "node -e \"require('fs').mkdirSync('site',{recursive:true});require('fs').copyFileSync('landing/index.html','site/index.html');console.log('site/index.html ← landing/index.html')\""
+    "demo:landing": "node -e \"require('fs').mkdirSync('site',{recursive:true});require('fs').copyFileSync('landing/index.html','site/index.html');console.log('site/index.html ← landing/index.html')\"",
+    "demo:site": "npm run demo:run && npm run demo:fixtures && npm run demo:landing"
   },
   "dependencies": {
     "pixelmatch": "^6.0.0",

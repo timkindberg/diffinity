@@ -1,12 +1,12 @@
 #!/usr/bin/env npx tsx
 /**
  * Kitchen-sink demo runner — captures the "Helix Ops Console" site
- * (demo-app/, built via build:demo-app) across 3 pages, applies 3 CSS
+ * (demo-app/, built via demo:build) across 3 pages, applies 3 CSS
  * mutation scenarios, and generates a diffinity report per scenario.
  *
  * Output:
  *   site/
- *     app/              (from build:demo-app)
+ *     app/              (from demo:build)
  *     captures/
  *       baseline/<page>/
  *       targeted/<page>/
@@ -17,7 +17,7 @@
  *       refactor/index.html
  *       theme/index.html
  *
- * Usage: npm run demo
+ * Usage: npm run demo:run
  */
 import { chromium, type Page, type BrowserContext } from 'playwright'
 import { readFileSync, existsSync } from 'fs'
@@ -237,7 +237,7 @@ async function main(): Promise<void> {
   console.log('Diffinity Kitchen-Sink Demo\n')
 
   if (!existsSync(join(APP_DIR, 'index.html'))) {
-    console.error(`No built site at ${APP_DIR}. Run "npm run build:demo-app" first.`)
+    console.error(`No built site at ${APP_DIR}. Run "npm run demo:build" first.`)
     process.exit(1)
   }
 

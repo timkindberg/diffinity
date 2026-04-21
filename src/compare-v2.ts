@@ -305,7 +305,7 @@ export function compareDirs(options: ComparePageOptions): CompareResult {
     writeFileSync(reportHtmlPath, buildReportHtml(template, vrData))
     log(`\nReport: ${reportHtmlPath}`)
   } else {
-    log(`\nReport data: ${dataPath} (report template not found — run "npm run build:report")`)
+    log(`\nReport data: ${dataPath} (report template not found — run "npm run report:build")`)
   }
 
   return { pages: results, reportDataPath: dataPath, reportHtmlPath }
