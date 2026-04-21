@@ -292,7 +292,7 @@ export function DiffPanel({
                 >
                   <span class="no-effect-triangle">{showNoEffect ? '\u25be' : '\u25b8'}</span>
                   <span class="no-effect-title">Structural changes — no visual effect</span>
-                  <span class="no-effect-count">{demotedCount}</span>
+                  <span class="no-effect-count">{summary?.structuralChanges ?? demotedCount}</span>
                 </button>
                 {showNoEffect && (
                   <>

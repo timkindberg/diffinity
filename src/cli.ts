@@ -86,7 +86,7 @@ try {
   })
 
   const hasChanges = result.pages.some(page =>
-    Object.values(page.viewportDiffs).some(vp => vp.summary.totalChanges > 0)
+    Object.values(page.viewportDiffs).some(vp => vp.summary.visualChanges > 0)
   )
 
   process.exit(hasChanges ? 1 : 0)

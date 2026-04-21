@@ -59,7 +59,12 @@ export type DiffResult = {
     removed: number
     moved: number
     unchanged: number
+    /** All diffs including demoted ones (= visualChanges + structuralChanges). */
     totalChanges: number
+    /** Change-rollup count of diffs whose visualImpact verdict is NOT pixel-identical. */
+    visualChanges: number
+    /** Change-rollup count of diffs whose visualImpact verdict IS pixel-identical. */
+    structuralChanges: number
     groupCount: number
     groupedElementCount: number
   }
@@ -1049,6 +1054,8 @@ export function consolidateDiffs(
       moved: deduped.filter(d => d.type === 'moved' || d.type === 'moved+changed').length,
       unchanged: raw.summary.unchanged + finalSuppressed,
       totalChanges,
+      visualChanges: totalChanges,
+      structuralChanges: 0,
       groupCount: groups.length,
       groupedElementCount: groups.reduce((sum, g) => sum + g.members.length, 0),
     },
@@ -1365,6 +1372,8 @@ export function diffManifests(
       moved: diffs.filter((d) => d.type === 'moved' || d.type === 'moved+changed').length,
       unchanged,
       totalChanges,
+      visualChanges: totalChanges,
+      structuralChanges: 0,
       groupCount: 0,
       groupedElementCount: 0,
     },

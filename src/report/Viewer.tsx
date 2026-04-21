@@ -21,7 +21,7 @@ function getActiveVpData(item: PageData, activeViewport: number, dataViewports: 
 function getViewportChangeCount(item: PageData | undefined, vp: number): number {
   if (!item?.viewportDiffs) return 0
   const vpData = item.viewportDiffs[vp]
-  return vpData?.summary?.totalChanges ?? 0
+  return vpData?.summary?.visualChanges ?? 0
 }
 
 export function Viewer({ pages, selected, viewMode, activeViewport, dataViewports, viewports, onViewModeChange, onViewportChange }: Props) {

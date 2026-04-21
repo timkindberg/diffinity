@@ -58,7 +58,12 @@ export type DiffSummary = {
   removed: number
   moved: number
   unchanged: number
+  /** All diffs including demoted ones (= visualChanges + structuralChanges). */
   totalChanges: number
+  /** Change-rollup count of diffs whose visualImpact verdict is NOT pixel-identical. */
+  visualChanges: number
+  /** Change-rollup count of diffs whose visualImpact verdict IS pixel-identical. */
+  structuralChanges: number
   groupCount: number
   groupedElementCount: number
 }

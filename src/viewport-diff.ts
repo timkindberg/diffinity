@@ -22,7 +22,7 @@ export function diffManifestsByViewport(
         diffs: [],
         groups: [],
         cascadeClusters: [],
-        summary: { changed: 0, added: 0, removed: 0, moved: 0, unchanged: 0, totalChanges: 0, groupCount: 0, groupedElementCount: 0 },
+        summary: { changed: 0, added: 0, removed: 0, moved: 0, unchanged: 0, totalChanges: 0, visualChanges: 0, structuralChanges: 0, groupCount: 0, groupedElementCount: 0 },
         timeMs: 0,
       }
       continue
@@ -44,6 +44,8 @@ export function diffManifestsByViewport(
       summary: {
         ...consolidated.summary,
         totalChanges: remainingChanges,
+        visualChanges: remainingChanges,
+        structuralChanges: 0,
         groupCount: cascade.remainingGroups.length,
         groupedElementCount: cascade.remainingGroups.reduce((s, g) => s + g.members.length, 0),
         cascadeChanges,

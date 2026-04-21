@@ -252,6 +252,35 @@ function classifyViewportVisualImpact(input: ClassifyViewportInput): void {
     const agg = classifyGroup(c.members)
     if (agg) c.visualImpact = agg
   }
+
+  recomputeVisualStructuralCounts(viewportDiff)
+}
+
+/**
+ * After visual-impact classification runs, partition the change rollup into
+ * `visualChanges` (real pixel diffs) and `structuralChanges` (pixel-identical
+ * diffs, demoted by the report UI). Uses the same rollup shape as `totalChanges`:
+ * diffs contribute `changes.length`; groups contribute `changes.length × members.length`.
+ * Anything without a classified verdict counts toward `visualChanges` — "unknown
+ * impact" defaults to visible so we never silently demote unverified diffs.
+ */
+export function recomputeVisualStructuralCounts(viewportDiff: ViewportDiffResult): void {
+  let visual = 0
+  let structural = 0
+  for (const d of viewportDiff.diffs) {
+    const bucket = d.visualImpact?.verdict === 'pixel-identical' ? 'structural' : 'visual'
+    if (bucket === 'visual') visual += d.changes.length
+    else structural += d.changes.length
+  }
+  for (const g of viewportDiff.groups) {
+    const weight = g.changes.length * g.members.length
+    const bucket = g.visualImpact?.verdict === 'pixel-identical' ? 'structural' : 'visual'
+    if (bucket === 'visual') visual += weight
+    else structural += weight
+  }
+  viewportDiff.summary.visualChanges = visual
+  viewportDiff.summary.structuralChanges = structural
+  viewportDiff.summary.totalChanges = visual + structural
 }
 
 // ─── Main comparison function ───────────────────────────────────────
@@ -331,21 +360,22 @@ export function compareDirs(options: ComparePageOptions): CompareResult {
 
     results.push({ ...pr, viewportDiffs })
 
-    // Log summary for the primary viewport
+    // Log summary for the primary viewport. Use visualChanges so pixel-identical
+    // diffs (demoted in the report UI) don't bump the headline past IDENTICAL.
     const primaryVp = viewports[0]
     const s = viewportDiffs[primaryVp].summary
     const hasBefore = viewportManifests[primaryVp].before
     const hasAfter = viewportManifests[primaryVp].after
     const status = !hasBefore ? 'AFTER ONLY'
       : !hasAfter ? 'BEFORE ONLY'
-      : s.totalChanges === 0 ? 'IDENTICAL'
-      : s.totalChanges < 5 ? 'MINOR'
-      : s.totalChanges < 20 ? 'CHANGED'
+      : s.visualChanges === 0 ? 'IDENTICAL'
+      : s.visualChanges < 5 ? 'MINOR'
+      : s.visualChanges < 20 ? 'CHANGED'
       : 'SIGNIFICANT'
 
     const vpSummaries = viewports.map(w => {
       const vs = viewportDiffs[w].summary
-      return `${w}:${vs.totalChanges}`
+      return `${w}:${vs.visualChanges}`
     }).join(' ')
 
     log(`  ${dirName}: ${status} (${vpSummaries})`)
