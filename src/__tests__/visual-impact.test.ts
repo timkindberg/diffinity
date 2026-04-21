@@ -237,6 +237,68 @@ describe('classifyPairs (end-to-end, synthetic PNGs)', () => {
     expect(visualImpact?.verdict).toBe('visual')
   })
 
+  it('writes before/after/diff/meta artifacts + classification.jsonl when dump is enabled', async () => {
+    const { mkdtempSync, writeFileSync, existsSync, readFileSync } = await import('fs')
+    const { tmpdir } = await import('os')
+    const { join } = await import('path')
+    const dir = mkdtempSync(join(tmpdir(), 'vr-9t3-'))
+
+    const beforePng = solidPng(300, 300, [255, 255, 255, 255])
+    const afterPng = solidPng(300, 300, [255, 255, 255, 255], [
+      { x: 150, y: 10, w: 100, h: 80, color: [255, 0, 0, 255] },
+    ])
+    const beforePath = join(dir, 'before.png')
+    const afterPath = join(dir, 'after.png')
+    writeFileSync(beforePath, PNG.sync.write(beforePng))
+    writeFileSync(afterPath, PNG.sync.write(afterPng))
+
+    const identicalEl = el('div', { bbox: { x: 10, y: 10, w: 100, h: 80 } })
+    const visualEl = el('div', { bbox: { x: 150, y: 10, w: 100, h: 80 } })
+    const bm = manifest(el('body', { children: [identicalEl, visualEl] }))
+    resetIdx()
+    const identicalElA = el('div', { bbox: { x: 10, y: 10, w: 100, h: 80 } })
+    const visualElA = el('div', { bbox: { x: 150, y: 10, w: 100, h: 80 } })
+    const am = manifest(el('body', { children: [identicalElA, visualElA] }))
+
+    const dumpDir = join(dir, '_debug')
+    classifyPairs(
+      [
+        { beforeIdx: identicalEl.idx, afterIdx: identicalElA.idx },
+        { beforeIdx: visualEl.idx, afterIdx: visualElA.idx },
+      ],
+      {
+        beforeManifest: bm,
+        afterManifest: am,
+        beforeLivePngPath: beforePath,
+        afterLivePngPath: afterPath,
+        dump: { dumpDir, pageId: 'dashboard', viewport: 1440 },
+      },
+    )
+
+    // Per-pair artifacts exist for both classified pairs.
+    for (const [bIdx, aIdx] of [[identicalEl.idx, identicalElA.idx], [visualEl.idx, visualElA.idx]]) {
+      const pairDir = join(dumpDir, 'dashboard', '1440', `${bIdx}-${aIdx}`)
+      expect(existsSync(join(pairDir, 'before.png'))).toBe(true)
+      expect(existsSync(join(pairDir, 'after.png'))).toBe(true)
+      expect(existsSync(join(pairDir, 'diff.png'))).toBe(true)
+      expect(existsSync(join(pairDir, 'meta.json'))).toBe(true)
+      const meta = JSON.parse(readFileSync(join(pairDir, 'meta.json'), 'utf-8'))
+      expect(meta.beforeIdx).toBe(bIdx)
+      expect(meta.afterIdx).toBe(aIdx)
+      expect(meta.beforeBbox).toEqual({ x: bIdx === identicalEl.idx ? 10 : 150, y: 10, w: 100, h: 80 })
+      expect(typeof meta.mismatchPercent).toBe('number')
+      expect(['pixel-identical', 'visual']).toContain(meta.verdict)
+    }
+
+    // classification.jsonl has one line per pair, each with pageId + viewport.
+    const jsonl = readFileSync(join(dumpDir, 'classification.jsonl'), 'utf-8').trim().split('\n')
+    expect(jsonl).toHaveLength(2)
+    const parsed = jsonl.map(l => JSON.parse(l))
+    expect(parsed.every(r => r.pageId === 'dashboard' && r.viewport === 1440)).toBe(true)
+    expect(parsed.find(r => r.beforeIdx === identicalEl.idx)?.verdict).toBe('pixel-identical')
+    expect(parsed.find(r => r.beforeIdx === visualEl.idx)?.verdict).toBe('visual')
+  })
+
   it('returns an empty map when the PNGs are missing', () => {
     const root = el('body', { children: [] })
     const m = manifest(root)

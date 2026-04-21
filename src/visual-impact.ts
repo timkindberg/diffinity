@@ -10,7 +10,8 @@
  * The thresholds here match the fidelity check in capture.ts: `threshold: 0.1`
  * (perceptual) plus mismatchPercent ≤ 0.1%.
  */
-import { readFileSync, existsSync } from 'fs'
+import { readFileSync, existsSync, mkdirSync, writeFileSync, appendFileSync } from 'fs'
+import { join } from 'path'
 import { PNG } from 'pngjs'
 import pixelmatch from 'pixelmatch'
 import type { ElementNode, DomManifest, PseudoStateRule } from './dom-manifest.js'
@@ -81,17 +82,26 @@ function cropRegion(png: Png, x: number, y: number, w: number, h: number): Png |
   return out
 }
 
-/**
- * Compare a single element pair. Returns null if the pair cannot be evaluated
- * (zero-area bbox, size drift between before/after, or out-of-bounds crop).
- */
-export function classifyElementPair(
+type BBox = { x: number; y: number; w: number; h: number }
+
+type PairArtifacts = {
+  impact: VisualImpact
+  bc: Png
+  ac: Png
+  diffImg: Png
+  bb: BBox
+  ab: BBox
+  threshold: number
+  maxMismatchPercent: number
+}
+
+function classifyElementPairFull(
   beforePng: Png,
   afterPng: Png,
   beforeNode: ElementNode,
   afterNode: ElementNode,
   opts: ClassifyOptions = {},
-): VisualImpact | null {
+): PairArtifacts | null {
   const threshold = opts.threshold ?? DEFAULT_THRESHOLD
   const maxMismatchPercent = opts.maxMismatchPercent ?? DEFAULT_MAX_MISMATCH_PERCENT
   const bb = beforeNode.bbox
@@ -116,7 +126,46 @@ export function classifyElementPair(
   if (verdict === 'pixel-identical') {
     impact.reason = mismatchPixels === 0 ? 'no-delta' : 'below-threshold'
   }
-  return impact
+
+  return {
+    impact,
+    bc,
+    ac,
+    diffImg,
+    bb,
+    ab,
+    threshold,
+    maxMismatchPercent,
+  }
+}
+
+/**
+ * Compare a single element pair. Returns null if the pair cannot be evaluated
+ * (zero-area bbox, size drift between before/after, or out-of-bounds crop).
+ */
+export function classifyElementPair(
+  beforePng: Png,
+  afterPng: Png,
+  beforeNode: ElementNode,
+  afterNode: ElementNode,
+  opts: ClassifyOptions = {},
+): VisualImpact | null {
+  return classifyElementPairFull(beforePng, afterPng, beforeNode, afterNode, opts)?.impact ?? null
+}
+
+/**
+ * Opt-in debug dump: write the cropped before/after PNGs, the pixelmatch diff
+ * image, and per-pair metadata to disk so humans can verify what the classifier
+ * actually compared. Activated by `VR_DEBUG_VISUAL_IMPACT=1` or by callers
+ * passing `ComparePageOptions.debugVisualImpactDir`.
+ */
+export type DumpContext = {
+  /** Root debug directory (e.g. `<reportDir>/_debug`). */
+  dumpDir: string
+  /** Page identifier (e.g. scenario dir name). */
+  pageId: string
+  /** Viewport width in pixels. */
+  viewport: number
 }
 
 export type ClassifyContext = {
@@ -125,6 +174,7 @@ export type ClassifyContext = {
   beforeLivePngPath: string
   afterLivePngPath: string
   options?: ClassifyOptions
+  dump?: DumpContext
 }
 
 type PngCache = Map<string, Png>
@@ -163,10 +213,42 @@ export function classifyPairs(pairs: Pair[], ctx: ClassifyContext): Map<string, 
     const bn = beforeIdx.get(p.beforeIdx)
     const an = afterIdx.get(p.afterIdx)
     if (!bn || !an) continue
-    const impact = classifyElementPair(beforePng, afterPng, bn, an, ctx.options)
-    if (impact) out.set(`${p.beforeIdx}:${p.afterIdx}`, impact)
+    const full = classifyElementPairFull(beforePng, afterPng, bn, an, ctx.options)
+    if (!full) continue
+    out.set(`${p.beforeIdx}:${p.afterIdx}`, full.impact)
+    if (ctx.dump) {
+      writePairDump(ctx.dump, p.beforeIdx, p.afterIdx, full)
+    }
   }
   return out
+}
+
+function writePairDump(
+  dump: DumpContext,
+  beforeIdx: number,
+  afterIdx: number,
+  full: PairArtifacts,
+): void {
+  const pairKey = `${beforeIdx}-${afterIdx}`
+  const outDir = join(dump.dumpDir, dump.pageId, String(dump.viewport), pairKey)
+  mkdirSync(outDir, { recursive: true })
+  writeFileSync(join(outDir, 'before.png'), PNG.sync.write(full.bc))
+  writeFileSync(join(outDir, 'after.png'), PNG.sync.write(full.ac))
+  writeFileSync(join(outDir, 'diff.png'), PNG.sync.write(full.diffImg))
+  const meta = {
+    beforeIdx,
+    afterIdx,
+    beforeBbox: full.bb,
+    afterBbox: full.ab,
+    mismatchPixels: full.impact.mismatchPixels,
+    mismatchPercent: full.impact.mismatchPercent,
+    verdict: full.impact.verdict,
+    threshold: full.maxMismatchPercent,
+    perceptualThreshold: full.threshold,
+  }
+  writeFileSync(join(outDir, 'meta.json'), JSON.stringify(meta, null, 2))
+  const line = JSON.stringify({ pageId: dump.pageId, viewport: dump.viewport, ...meta }) + '\n'
+  appendFileSync(join(dump.dumpDir, 'classification.jsonl'), line)
 }
 
 /**

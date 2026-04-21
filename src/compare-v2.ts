@@ -3,7 +3,7 @@
  * Loads per-viewport DOM manifests, runs element matching + semantic diffing
  * independently per viewport, outputs report data.
  */
-import { readdirSync, readFileSync, writeFileSync, existsSync, statSync, mkdirSync, symlinkSync, realpathSync, lstatSync, unlinkSync } from 'fs'
+import { readdirSync, readFileSync, writeFileSync, existsSync, statSync, mkdirSync, symlinkSync, realpathSync, lstatSync, unlinkSync, rmSync } from 'fs'
 import { join, relative } from 'path'
 import { diffManifestsByViewport, type ViewportDiffResult } from './viewport-diff.js'
 import type { DomManifest } from './dom-manifest.js'
@@ -21,6 +21,13 @@ export type ComparePageOptions = {
   reportDir?: string
   /** Log function (default: console.log) */
   log?: (msg: string) => void
+  /**
+   * Opt-in debug dump for the visual-impact classifier: for every classified
+   * pair, write before/after/diff PNGs + meta.json so humans can sanity-check
+   * what pixelmatch actually saw. Overridden by `VR_DEBUG_VISUAL_IMPACT=1`
+   * (which sets this to `<reportDir>/_debug`).
+   */
+  debugVisualImpactDir?: string
 }
 
 type PageRole = {
@@ -191,6 +198,8 @@ type ClassifyViewportInput = {
   afterManifest: DomManifest | null
   beforeLivePngPath: string
   afterLivePngPath: string
+  /** When set, dump before/after/diff PNGs + meta.json for every classified pair. */
+  debugDump?: { dumpDir: string; pageId: string; viewport: number }
 }
 
 /**
@@ -224,6 +233,7 @@ function classifyViewportVisualImpact(input: ClassifyViewportInput): void {
     afterManifest,
     beforeLivePngPath,
     afterLivePngPath,
+    dump: input.debugDump,
   })
 
   const key = (p: Pair) =>
@@ -335,8 +345,19 @@ export function compareDirs(options: ComparePageOptions): CompareResult {
 
   const reportDir = options.reportDir ?? join(beforeDir, '..')
 
+  // Resolve debug-dump target: env var wins (developer toggle), else explicit caller option.
+  const debugDumpDir = process.env.VR_DEBUG_VISUAL_IMPACT
+    ? join(reportDir, '_debug')
+    : options.debugVisualImpactDir
+
+  // Wipe stale dump artifacts so `classification.jsonl` doesn't accrue lines across runs.
+  if (debugDumpDir && existsSync(debugDumpDir)) {
+    rmSync(debugDumpDir, { recursive: true, force: true })
+  }
+
   log('Diffinity — Semantic Diff Comparison')
   log(`Viewports: ${viewports.join(', ')}px`)
+  if (debugDumpDir) log(`Visual-impact debug dump: ${debugDumpDir}`)
 
   const beforePages = findPageRoleDirs(beforeDir, viewports)
   const afterPages = findPageRoleDirs(afterDir, viewports)
@@ -384,6 +405,7 @@ export function compareDirs(options: ComparePageOptions): CompareResult {
         afterManifest: viewportManifests[width].after,
         beforeLivePngPath: join(beforeDir, dirName, `html-${width}`, 'live.png'),
         afterLivePngPath: join(afterDir, dirName, `html-${width}`, 'live.png'),
+        debugDump: debugDumpDir ? { dumpDir: debugDumpDir, pageId: dirName, viewport: width } : undefined,
       })
     }
 
