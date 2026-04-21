@@ -260,6 +260,46 @@ kbd {
   color: var(--text3); opacity: 0.8;
 }
 
+/* -- "No visual effect" demoted section ------------------------- */
+
+.diff-empty-demoted {
+  padding: 16px 12px; font-size: 11px; color: var(--text3); line-height: 1.5;
+}
+
+.no-effect-section {
+  margin: 14px 0 0; border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+.no-effect-toggle {
+  display: flex; align-items: center; gap: 6px;
+  width: calc(100% - 16px); margin: 0 8px;
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text3); font-size: 11px; font-weight: 500;
+  padding: 6px 8px; border-radius: 4px;
+  font-family: inherit; text-align: left;
+}
+.no-effect-toggle:hover { background: var(--bg3); color: var(--text2); }
+.no-effect-toggle.expanded { color: var(--text2); }
+.no-effect-triangle {
+  display: inline-block; width: 10px; font-size: 10px;
+  color: var(--text3); text-align: center;
+}
+.no-effect-title { flex: 1; }
+.no-effect-count {
+  font-family: var(--mono); font-size: 10px;
+  background: var(--bg3); color: var(--text3);
+  padding: 1px 6px; border-radius: 10px; font-weight: 600;
+}
+.no-effect-desc {
+  margin: 4px 12px 8px; font-size: 10px; line-height: 1.5;
+  color: var(--text3); opacity: 0.8;
+}
+.no-effect-items .el-diff { opacity: 0.6; }
+.no-effect-items .el-diff:hover,
+.no-effect-items .el-diff.kb-focused,
+.no-effect-items .el-diff.open { opacity: 1; }
+.no-effect-items .el-diff-importance { display: none; }
+
 .group-member-item {
   display: flex; align-items: center; gap: 6px;
   font-size: 11px; color: var(--text2); padding: 5px 8px; margin: 2px 0;

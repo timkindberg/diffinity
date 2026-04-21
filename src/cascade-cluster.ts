@@ -1,5 +1,6 @@
 import { type Change, type ElementDiff, type DiffGroup, type ImportanceLevel } from './diff.js'
 import { type ElementNode, type DomManifest } from './dom-manifest.js'
+import type { VisualImpact } from './visual-impact.js'
 
 /**
  * Cascade clustering: collapse groups of elements that share the same
@@ -28,6 +29,7 @@ export type CascadeCluster = {
   importance: ImportanceLevel
   members: { label: string; beforeIdx: number | null; afterIdx: number | null }[]
   rootCause: CascadeRootCause | null
+  visualImpact?: VisualImpact
 }
 
 type PropDelta = {

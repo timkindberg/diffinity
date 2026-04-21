@@ -95,6 +95,7 @@ export { matchManifests } from './match.js'
 export { diffManifests, consolidateDiffs } from './diff.js'
 export { buildCascadeClusters } from './cascade-cluster.js'
 export { diffManifestsByViewport } from './viewport-diff.js'
+export { classifyElementPair, classifyPairs, aggregateImpact } from './visual-impact.js'
 
 // Re-export types consumers may need
 export type { CapturePageOptions, CapturePageResult, CaptureViewportResult, FidelityResult } from './capture.js'
@@ -105,3 +106,4 @@ export type { MatchResult, MatchedPair } from './match.js'
 export type { DiffResult, ElementDiff, DiffGroup, Change, ChangeCategory, ImportanceLevel } from './diff.js'
 export type { CascadeCluster, CascadeRootCause } from './cascade-cluster.js'
 export type { ViewportDiffResult } from './viewport-diff.js'
+export type { VisualImpact, VisualImpactVerdict, ClassifyOptions, ClassifyContext, Pair } from './visual-impact.js'

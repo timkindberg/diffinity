@@ -5,6 +5,12 @@ export type Change = {
   after?: string
 }
 
+export type VisualImpactData = {
+  mismatchPixels: number
+  mismatchPercent: number
+  verdict: 'visual' | 'pixel-identical'
+}
+
 export type ElementDiffData = {
   label: string
   selector?: string
@@ -14,6 +20,7 @@ export type ElementDiffData = {
   changes: Change[]
   beforeIdx?: number
   afterIdx?: number
+  visualImpact?: VisualImpactData
 }
 
 export type GroupMember = {
@@ -28,6 +35,7 @@ export type DiffGroupData = {
   score: number
   changes: Change[]
   members: GroupMember[]
+  visualImpact?: VisualImpactData
 }
 
 export type CascadeClusterData = {
@@ -41,6 +49,7 @@ export type CascadeClusterData = {
     after: string
   }
   members: GroupMember[]
+  visualImpact?: VisualImpactData
 }
 
 export type DiffSummary = {

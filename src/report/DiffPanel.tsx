@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'preact/hooks'
+import { useRef, useEffect, useState } from 'preact/hooks'
 import type {
   PageData, ViewportDiffData, ElementDiffData, DiffGroupData,
   CascadeClusterData, Change, FlatItem,
@@ -118,6 +118,15 @@ function matchesQuery(query: string, d: { label?: string; type?: string; changes
   return false
 }
 
+type SortEntry =
+  | { kind: 'group'; group: DiffGroupData; score: number; importance: string }
+  | { kind: 'diff'; diff: ElementDiffData; score: number; importance: string }
+
+function isPixelIdentical(e: SortEntry): boolean {
+  const impact = e.kind === 'diff' ? e.diff.visualImpact : e.group.visualImpact
+  return impact?.verdict === 'pixel-identical'
+}
+
 function getFiltered(vpData: ViewportDiffData | undefined, query: string) {
   if (!vpData) return { diffs: [], groups: [], cascadeClusters: [] }
   const { diffs, groups, cascadeClusters = [] } = vpData
@@ -148,12 +157,10 @@ export function DiffPanel({
     : undefined
 
   const filtered = getFiltered(vpData, query)
-  const isEmpty = !item || (filtered.diffs.length === 0 && filtered.groups.length === 0 && filtered.cascadeClusters.length === 0)
+  const [showNoEffect, setShowNoEffect] = useState(false)
 
   // Build sorted entries
-  type Entry = { kind: 'group'; group: DiffGroupData; score: number; importance: string }
-    | { kind: 'diff'; diff: ElementDiffData; score: number; importance: string }
-  const entries: Entry[] = []
+  const entries: SortEntry[] = []
   for (const g of filtered.groups) {
     entries.push({ kind: 'group', group: g, score: g.score, importance: g.importance || 'minor' })
   }
@@ -166,14 +173,36 @@ export function DiffPanel({
     return ia !== ib ? ia - ib : b.score - a.score
   })
 
-  // Build flat items for keyboard navigation
+  // Partition visual vs pixel-identical ("no visual effect") items. Pixel-identical
+  // items are demoted to a collapsed section so they don't compete with real
+  // visual diffs — they're preserved for audit, not surfaced as noise.
+  const mainEntries = entries.filter(e => !isPixelIdentical(e))
+  const demotedEntries = entries.filter(e => isPixelIdentical(e))
+  const mainClusters = filtered.cascadeClusters.filter(cc => cc.visualImpact?.verdict !== 'pixel-identical')
+  const demotedClusters = filtered.cascadeClusters.filter(cc => cc.visualImpact?.verdict === 'pixel-identical')
+  const demotedCount = demotedEntries.length + demotedClusters.length
+
+  const isEmpty = !item
+    || (mainEntries.length === 0 && mainClusters.length === 0 && demotedCount === 0)
+
+  // Build flat items for keyboard navigation — main items first, then demoted
+  // (only when expanded) so the cursor skips hidden rows.
   const flatItems: FlatItem[] = []
-  for (const e of entries) {
+  for (const e of mainEntries) {
     if (e.kind === 'group') flatItems.push({ kind: 'group', group: e.group })
     else flatItems.push({ kind: 'diff', diff: e.diff })
   }
-  for (const cc of filtered.cascadeClusters) {
+  for (const cc of mainClusters) {
     flatItems.push({ kind: 'cascade', cluster: cc })
+  }
+  if (showNoEffect) {
+    for (const e of demotedEntries) {
+      if (e.kind === 'group') flatItems.push({ kind: 'group', group: e.group })
+      else flatItems.push({ kind: 'diff', diff: e.diff })
+    }
+    for (const cc of demotedClusters) {
+      flatItems.push({ kind: 'cascade', cluster: cc })
+    }
   }
   flatItemsRef.current = flatItems
   flatCountRef.current = flatItems.length
@@ -231,7 +260,10 @@ export function DiffPanel({
           <div class="diff-empty">{emptyMsg}</div>
         ) : (
           <>
-            {entries.map((entry, ei) => {
+            {mainEntries.length === 0 && mainClusters.length === 0 && demotedCount > 0 && (
+              <div class="diff-empty diff-empty-demoted">No visual diffs — only structural changes with no pixel impact.</div>
+            )}
+            {mainEntries.map((entry, ei) => {
               const fi = flatItems.indexOf(
                 entry.kind === 'group'
                   ? flatItems.find(f => f.kind === 'group' && f.group === entry.group)!
@@ -241,15 +273,49 @@ export function DiffPanel({
                 ? <GroupEntry key={`g-${ei}`} group={entry.group} flatIdx={fi} focused={focused} cursorIdx={cursorIdx} onSetCursor={onSetCursor} onFocus={onFocus} />
                 : <DiffEntry key={`d-${ei}`} diff={entry.diff} flatIdx={fi} focused={focused} cursorIdx={cursorIdx} onSetCursor={onSetCursor} onFocus={onFocus} />
             })}
-            {filtered.cascadeClusters.length > 0 && (
+            {mainClusters.length > 0 && (
               <>
                 <div class="cascade-section-header">Layout Cascade</div>
                 <div class="cascade-section-desc">Size changes inherited from a parent reflow — grouped by property &amp; direction, avg delta shown.</div>
-                {filtered.cascadeClusters.map((cc, ci) => {
+                {mainClusters.map((cc, ci) => {
                   const fi = flatItems.findIndex(f => f.kind === 'cascade' && f.cluster === cc)
                   return <CascadeEntry key={`c-${ci}`} cluster={cc} flatIdx={fi} focused={focused} cursorIdx={cursorIdx} onSetCursor={onSetCursor} onFocus={onFocus} />
                 })}
               </>
+            )}
+            {demotedCount > 0 && (
+              <div class="no-effect-section">
+                <button
+                  type="button"
+                  class={`no-effect-toggle${showNoEffect ? ' expanded' : ''}`}
+                  onClick={() => setShowNoEffect(v => !v)}
+                >
+                  <span class="no-effect-triangle">{showNoEffect ? '\u25be' : '\u25b8'}</span>
+                  <span class="no-effect-title">Structural changes — no visual effect</span>
+                  <span class="no-effect-count">{demotedCount}</span>
+                </button>
+                {showNoEffect && (
+                  <>
+                    <div class="no-effect-desc">CSS properties changed but rendered pixels are identical. Preserved for audit, de-emphasized from the main list.</div>
+                    <div class="no-effect-items">
+                      {demotedEntries.map((entry, ei) => {
+                        const fi = flatItems.indexOf(
+                          entry.kind === 'group'
+                            ? flatItems.find(f => f.kind === 'group' && f.group === entry.group)!
+                            : flatItems.find(f => f.kind === 'diff' && f.diff === entry.diff)!
+                        )
+                        return entry.kind === 'group'
+                          ? <GroupEntry key={`nd-g-${ei}`} group={entry.group} flatIdx={fi} focused={focused} cursorIdx={cursorIdx} onSetCursor={onSetCursor} onFocus={onFocus} />
+                          : <DiffEntry key={`nd-d-${ei}`} diff={entry.diff} flatIdx={fi} focused={focused} cursorIdx={cursorIdx} onSetCursor={onSetCursor} onFocus={onFocus} />
+                      })}
+                      {demotedClusters.map((cc, ci) => {
+                        const fi = flatItems.findIndex(f => f.kind === 'cascade' && f.cluster === cc)
+                        return <CascadeEntry key={`nd-c-${ci}`} cluster={cc} flatIdx={fi} focused={focused} cursorIdx={cursorIdx} onSetCursor={onSetCursor} onFocus={onFocus} />
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
             )}
           </>
         )}

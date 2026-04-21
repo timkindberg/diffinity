@@ -1,5 +1,6 @@
 import { type ElementNode, type DomManifest } from './dom-manifest.js'
 import { type MatchResult } from './match.js'
+import type { VisualImpact } from './visual-impact.js'
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -36,6 +37,7 @@ export type ElementDiff = {
   changes: Change[]
   score: number
   importance: ImportanceLevel
+  visualImpact?: VisualImpact
 }
 
 export type DiffGroup = {
@@ -45,6 +47,7 @@ export type DiffGroup = {
   score: number
   importance: ImportanceLevel
   members: { label: string; beforeIdx: number | null; afterIdx: number | null }[]
+  visualImpact?: VisualImpact
 }
 
 export type DiffResult = {

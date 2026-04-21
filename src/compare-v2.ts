@@ -7,6 +7,7 @@ import { readdirSync, readFileSync, writeFileSync, existsSync, statSync, mkdirSy
 import { join, relative } from 'path'
 import { diffManifestsByViewport, type ViewportDiffResult } from './viewport-diff.js'
 import type { DomManifest } from './dom-manifest.js'
+import { classifyPairs, aggregateImpact, type Pair, type VisualImpact } from './visual-impact.js'
 
 export type ComparePageOptions = {
   /** Directory containing 'before' captures */
@@ -181,6 +182,78 @@ function injectHighlightScript(results: PageRoleResult[], beforeDir: string, aft
   }
 }
 
+// ─── Visual-impact classification ───────────────────────────────────
+
+type ClassifyViewportInput = {
+  viewportDiff: ViewportDiffResult
+  beforeManifest: DomManifest | null
+  afterManifest: DomManifest | null
+  beforeLivePngPath: string
+  afterLivePngPath: string
+}
+
+/**
+ * Post-consolidation pass: crop each diff's element bbox from the live before/after
+ * PNGs and run pixelmatch. Tags diffs, groups, and cascade clusters with a
+ * `visualImpact` verdict so the report UI can demote pixel-identical items
+ * into a collapsed "no visual effect" section.
+ *
+ * Mutates `viewportDiff` in place. Silently skips if PNGs or manifests are
+ * missing — the report just won't show the demoted section for those pages.
+ */
+function classifyViewportVisualImpact(input: ClassifyViewportInput): void {
+  const { viewportDiff, beforeManifest, afterManifest, beforeLivePngPath, afterLivePngPath } = input
+  if (!beforeManifest || !afterManifest) return
+  if (!existsSync(beforeLivePngPath) || !existsSync(afterLivePngPath)) return
+
+  const pairs: Pair[] = []
+  for (const d of viewportDiff.diffs) {
+    pairs.push({ beforeIdx: d.beforeIdx, afterIdx: d.afterIdx })
+  }
+  for (const g of viewportDiff.groups) {
+    for (const m of g.members) pairs.push({ beforeIdx: m.beforeIdx, afterIdx: m.afterIdx })
+  }
+  for (const c of viewportDiff.cascadeClusters) {
+    for (const m of c.members) pairs.push({ beforeIdx: m.beforeIdx, afterIdx: m.afterIdx })
+  }
+  if (pairs.length === 0) return
+
+  const impacts = classifyPairs(pairs, {
+    beforeManifest,
+    afterManifest,
+    beforeLivePngPath,
+    afterLivePngPath,
+  })
+
+  const key = (p: Pair) =>
+    p.beforeIdx == null || p.afterIdx == null ? null : `${p.beforeIdx}:${p.afterIdx}`
+
+  for (const d of viewportDiff.diffs) {
+    const k = key({ beforeIdx: d.beforeIdx, afterIdx: d.afterIdx })
+    if (k) {
+      const impact = impacts.get(k)
+      if (impact) d.visualImpact = impact
+    }
+  }
+
+  const classifyGroup = (members: { beforeIdx: number | null; afterIdx: number | null }[]): VisualImpact | null => {
+    const memberImpacts: (VisualImpact | null)[] = members.map(m => {
+      const k = key(m)
+      return k ? impacts.get(k) ?? null : null
+    })
+    return aggregateImpact(memberImpacts)
+  }
+
+  for (const g of viewportDiff.groups) {
+    const agg = classifyGroup(g.members)
+    if (agg) g.visualImpact = agg
+  }
+  for (const c of viewportDiff.cascadeClusters) {
+    const agg = classifyGroup(c.members)
+    if (agg) c.visualImpact = agg
+  }
+}
+
 // ─── Main comparison function ───────────────────────────────────────
 
 /**
@@ -246,6 +319,14 @@ export function compareDirs(options: ComparePageOptions): CompareResult {
         hasBeforeHtml: existsSync(join(beforeDir, dirName, `html-${width}`, 'index.html')),
         hasAfterHtml: existsSync(join(afterDir, dirName, `html-${width}`, 'index.html')),
       }
+
+      classifyViewportVisualImpact({
+        viewportDiff: viewportDiffs[width],
+        beforeManifest: viewportManifests[width].before,
+        afterManifest: viewportManifests[width].after,
+        beforeLivePngPath: join(beforeDir, dirName, `html-${width}`, 'live.png'),
+        afterLivePngPath: join(afterDir, dirName, `html-${width}`, 'live.png'),
+      })
     }
 
     results.push({ ...pr, viewportDiffs })
