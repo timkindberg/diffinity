@@ -841,3 +841,152 @@ input, select, textarea { font: inherit; color: inherit; }
   background: rgba(255, 255, 255, 0.14);
   font-weight: 600;
 }
+
+/* ============================================================
+ * Data-table scroll container — prevents the wide customers table
+ * from forcing a horizontal scrollbar on the whole page at narrow
+ * widths. The table itself can still overflow inside this wrapper.
+ * ============================================================ */
+.data-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ============================================================
+ * Responsive — tablet (<= 1023px)
+ * Sidebar drops from a 224px left rail into a horizontal top-row
+ * nav that scrolls horizontally if links don't fit. Dashboard
+ * split becomes single-column, form grid stacks. Refactor
+ * scenario's grid rewrite is scoped to >= 1024 so narrow widths
+ * still share the baseline responsive fallback.
+ * ============================================================ */
+@media (max-width: 1023px) {
+  .app-body {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sidebar > div {
+    display: contents;
+  }
+
+  .sidebar-section-label {
+    display: none;
+  }
+
+  .sidebar-nav {
+    flex-direction: row;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+
+  .sidebar-link {
+    padding: 6px var(--space-3);
+    white-space: nowrap;
+  }
+
+  .sidebar-link-count {
+    margin-left: var(--space-1);
+  }
+
+  .app-main {
+    padding: var(--space-4);
+  }
+
+  .page-header {
+    flex-wrap: wrap;
+  }
+
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .dashboard-row {
+    grid-template-columns: 1fr;
+  }
+
+  .form-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================================
+ * Responsive — small mobile (<= 639px)
+ * Collapse multi-column grids to single column, tighten padding,
+ * stack page-header title/actions, hide nav search (still
+ * reachable via the ⌘ shortcut hint in a real app — here we
+ * just prioritize the actions).
+ * ============================================================ */
+@media (max-width: 639px) {
+  .nav {
+    padding: 0 var(--space-3);
+    gap: var(--space-3);
+  }
+
+  .nav-search {
+    display: none;
+  }
+
+  .app-main {
+    padding: var(--space-3);
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .page-title {
+    font-size: 22px;
+  }
+
+  .stat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .card-header,
+  .card-body {
+    padding: var(--space-4);
+  }
+
+  .table-toolbar {
+    flex-wrap: wrap;
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .table-toolbar input[type="search"] {
+    max-width: none;
+    min-width: 0;
+  }
+
+  .pagination {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .form-actions {
+    flex-wrap: wrap;
+  }
+}

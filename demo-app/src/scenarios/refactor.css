@@ -4,21 +4,28 @@
  * modernizing its layout primitive. If diffs appear, they should
  * be structural (display/flex-* → display/grid-*) or real
  * sub-pixel shifts worth seeing.
+ *
+ * Scoped to the desktop breakpoint so the responsive mobile/tablet
+ * layout (sidebar-as-top-nav) is unaffected — refactor only
+ * rewrites the primitive where the sidebar actually renders as a
+ * vertical rail.
  * ============================================================ */
 
-.sidebar {
-  display: grid;
-  grid-auto-flow: row;
-  /* Parent .app-body is flex-row with align-items: stretch, so .sidebar is
-     taller than its content. Flex column packs items to the top by default;
-     grid's default align-content (normal → stretch for auto rows) would
-     distribute the extra space between rows, pushing Insights down. */
-  align-content: start;
-  row-gap: var(--space-5);
-}
+@media (min-width: 1024px) {
+  .sidebar {
+    display: grid;
+    grid-auto-flow: row;
+    /* Parent .app-body is flex-row with align-items: stretch, so .sidebar is
+       taller than its content. Flex column packs items to the top by default;
+       grid's default align-content (normal → stretch for auto rows) would
+       distribute the extra space between rows, pushing Insights down. */
+    align-content: start;
+    row-gap: var(--space-5);
+  }
 
-.sidebar-nav {
-  display: grid;
-  grid-auto-flow: row;
-  row-gap: 2px;
+  .sidebar-nav {
+    display: grid;
+    grid-auto-flow: row;
+    row-gap: 2px;
+  }
 }

@@ -124,6 +124,7 @@ export function TablePage() {
           </label>
         </div>
 
+        <div class="data-table-wrap">
         <table class="data-table">
           <thead>
             <tr>
@@ -166,6 +167,7 @@ export function TablePage() {
             )}
           </tbody>
         </table>
+        </div>
 
         <div class="pagination">
           <span>
