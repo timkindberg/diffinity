@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState } from 'preact/hooks'
 import type {
   PageData, ViewportDiffData, ElementDiffData, DiffGroupData,
-  CascadeClusterData, Change, FlatItem,
+  CascadeClusterData, Change, FlatItem, VisualImpactReason,
 } from './types'
 import { highlightElement, highlightMulti, clearHighlights, getChangedProps } from './highlight'
 
@@ -125,6 +125,35 @@ type SortEntry =
 function isPixelIdentical(e: SortEntry): boolean {
   const impact = e.kind === 'diff' ? e.diff.visualImpact : e.group.visualImpact
   return impact?.verdict === 'pixel-identical'
+}
+
+// Labels for the reason badges shown on each item in the demoted panel and
+// tallied in the panel header. Keep phrasing short enough to fit in a badge
+// (≤ ~24 chars) — the tooltip at the header carries the long-form explanation.
+const REASON_LABEL: Record<VisualImpactReason, string> = {
+  'no-delta': 'no rendered delta',
+  'same-computed': 'same computed value',
+  'below-threshold': 'below threshold',
+}
+
+// Title text for the panel header tooltip. Mirrors REASON_LABEL keys.
+const REASON_TOOLTIP =
+  'Why each item landed here:\n'
+  + '• no rendered delta — pixelmatch saw zero difference in this element.\n'
+  + '• same computed value — the CSS changed textually but resolves to the same rendered CSS (e.g. a font-family swap where both stacks fall back to the same system font).\n'
+  + '• below threshold — some pixels differed but stayed under the visual-impact tolerance.'
+
+function reasonOf(entry: SortEntry | CascadeClusterData): VisualImpactReason | undefined {
+  if ('kind' in entry) {
+    const impact = entry.kind === 'diff' ? entry.diff.visualImpact : entry.group.visualImpact
+    return impact?.reason
+  }
+  return entry.visualImpact?.reason
+}
+
+function ReasonBadge({ reason }: { reason: VisualImpactReason | undefined }) {
+  if (!reason) return null
+  return <span class={`reason-badge reason-${reason}`}>{REASON_LABEL[reason]}</span>
 }
 
 function getFiltered(vpData: ViewportDiffData | undefined, query: string) {
@@ -283,40 +312,73 @@ export function DiffPanel({
                 })}
               </>
             )}
-            {demotedCount > 0 && (
-              <div class="no-effect-section">
-                <button
-                  type="button"
-                  class={`no-effect-toggle${showNoEffect ? ' expanded' : ''}`}
-                  onClick={() => setShowNoEffect(v => !v)}
-                >
-                  <span class="no-effect-triangle">{showNoEffect ? '\u25be' : '\u25b8'}</span>
-                  <span class="no-effect-title">Structural changes — no visual effect</span>
-                  <span class="no-effect-count">{summary?.structuralChanges ?? demotedCount}</span>
-                </button>
-                {showNoEffect && (
-                  <>
-                    <div class="no-effect-desc">CSS properties changed but rendered pixels are identical. Preserved for audit, de-emphasized from the main list.</div>
-                    <div class="no-effect-items">
-                      {demotedEntries.map((entry, ei) => {
-                        const fi = flatItems.indexOf(
-                          entry.kind === 'group'
-                            ? flatItems.find(f => f.kind === 'group' && f.group === entry.group)!
-                            : flatItems.find(f => f.kind === 'diff' && f.diff === entry.diff)!
-                        )
-                        return entry.kind === 'group'
-                          ? <GroupEntry key={`nd-g-${ei}`} group={entry.group} flatIdx={fi} focused={focused} cursorIdx={cursorIdx} onSetCursor={onSetCursor} onFocus={onFocus} />
-                          : <DiffEntry key={`nd-d-${ei}`} diff={entry.diff} flatIdx={fi} focused={focused} cursorIdx={cursorIdx} onSetCursor={onSetCursor} onFocus={onFocus} />
-                      })}
-                      {demotedClusters.map((cc, ci) => {
-                        const fi = flatItems.findIndex(f => f.kind === 'cascade' && f.cluster === cc)
-                        return <CascadeEntry key={`nd-c-${ci}`} cluster={cc} flatIdx={fi} focused={focused} cursorIdx={cursorIdx} onSetCursor={onSetCursor} onFocus={onFocus} />
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
+            {demotedCount > 0 && (() => {
+              // Tally reasons for the header breakdown.
+              const reasonCounts: Record<string, number> = {}
+              for (const e of demotedEntries) {
+                const r = reasonOf(e) ?? 'unknown'
+                reasonCounts[r] = (reasonCounts[r] ?? 0) + 1
+              }
+              for (const cc of demotedClusters) {
+                const r = cc.visualImpact?.reason ?? 'unknown'
+                reasonCounts[r] = (reasonCounts[r] ?? 0) + 1
+              }
+              const breakdown: { reason: VisualImpactReason | 'unknown'; count: number; label: string }[] = []
+              for (const r of ['no-delta', 'below-threshold', 'same-computed'] as VisualImpactReason[]) {
+                if (reasonCounts[r]) breakdown.push({ reason: r, count: reasonCounts[r], label: REASON_LABEL[r] })
+              }
+              if (reasonCounts['unknown']) breakdown.push({ reason: 'unknown', count: reasonCounts['unknown'], label: 'unclassified' })
+
+              return (
+                <div class="no-effect-section">
+                  <button
+                    type="button"
+                    class={`no-effect-toggle${showNoEffect ? ' expanded' : ''}`}
+                    onClick={() => setShowNoEffect(v => !v)}
+                  >
+                    <span class="no-effect-triangle">{showNoEffect ? '\u25be' : '\u25b8'}</span>
+                    <span class="no-effect-title">Changes not visible in the static capture</span>
+                    <span
+                      class="no-effect-help"
+                      title={REASON_TOOLTIP}
+                      onClick={(e) => e.stopPropagation()}
+                    >?</span>
+                    <span class="no-effect-count">{summary?.structuralChanges ?? demotedCount}</span>
+                  </button>
+                  {showNoEffect && (
+                    <>
+                      {breakdown.length > 0 && (
+                        <div class="no-effect-breakdown">
+                          {breakdown.map((b, i) => (
+                            <span key={i} class={`no-effect-breakdown-item reason-${b.reason}`}>
+                              <span class="no-effect-breakdown-count">{b.count}</span> {b.label}
+                              {i < breakdown.length - 1 && <span class="no-effect-breakdown-sep"> · </span>}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div class="no-effect-desc">CSS properties changed but rendered pixels are identical. Preserved for audit, de-emphasized from the main list.</div>
+                      <div class="no-effect-items">
+                        {demotedEntries.map((entry, ei) => {
+                          const fi = flatItems.indexOf(
+                            entry.kind === 'group'
+                              ? flatItems.find(f => f.kind === 'group' && f.group === entry.group)!
+                              : flatItems.find(f => f.kind === 'diff' && f.diff === entry.diff)!
+                          )
+                          return entry.kind === 'group'
+                            ? <GroupEntry key={`nd-g-${ei}`} group={entry.group} flatIdx={fi} focused={focused} cursorIdx={cursorIdx} onSetCursor={onSetCursor} onFocus={onFocus} reason={entry.group.visualImpact?.reason} />
+                            : <DiffEntry key={`nd-d-${ei}`} diff={entry.diff} flatIdx={fi} focused={focused} cursorIdx={cursorIdx} onSetCursor={onSetCursor} onFocus={onFocus} reason={entry.diff.visualImpact?.reason} />
+                        })}
+                        {demotedClusters.map((cc, ci) => {
+                          const fi = flatItems.findIndex(f => f.kind === 'cascade' && f.cluster === cc)
+                          return <CascadeEntry key={`nd-c-${ci}`} cluster={cc} flatIdx={fi} focused={focused} cursorIdx={cursorIdx} onSetCursor={onSetCursor} onFocus={onFocus} reason={cc.visualImpact?.reason} />
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )
+            })()}
           </>
         )}
       </div>
@@ -332,9 +394,10 @@ type DiffEntryProps = {
   cursorIdx: number
   onSetCursor: (idx: number) => void
   onFocus: () => void
+  reason?: VisualImpactReason
 }
 
-function DiffEntry({ diff, flatIdx, focused, cursorIdx, onSetCursor, onFocus }: DiffEntryProps) {
+function DiffEntry({ diff, flatIdx, focused, cursorIdx, onSetCursor, onFocus, reason }: DiffEntryProps) {
   const imp = diff.importance || 'minor'
   const isFocused = focused && cursorIdx === flatIdx
   return (
@@ -356,6 +419,7 @@ function DiffEntry({ diff, flatIdx, focused, cursorIdx, onSetCursor, onFocus }: 
         <div class="el-diff-title-row">
           <span class="el-diff-label">{diff.label}</span>
           {diff.changes.length > 1 && <span class="el-diff-count">{diff.changes.length}</span>}
+          <ReasonBadge reason={reason} />
         </div>
       </div>
       <div class="el-diff-body">
@@ -373,9 +437,10 @@ type GroupEntryProps = {
   cursorIdx: number
   onSetCursor: (idx: number) => void
   onFocus: () => void
+  reason?: VisualImpactReason
 }
 
-function GroupEntry({ group, flatIdx, focused, cursorIdx, onSetCursor, onFocus }: GroupEntryProps) {
+function GroupEntry({ group, flatIdx, focused, cursorIdx, onSetCursor, onFocus, reason }: GroupEntryProps) {
   const imp = group.importance || 'minor'
   const isFocused = focused && cursorIdx === flatIdx
   const preview = group.members.slice(0, PREVIEW_MAX).map(m => m.label)
@@ -401,6 +466,7 @@ function GroupEntry({ group, flatIdx, focused, cursorIdx, onSetCursor, onFocus }
         <div class="el-diff-title-row">
           <span class="el-diff-label">Multiple Similar &times;{group.members.length}</span>
           <span class="group-changes-summary">{propNames}</span>
+          <ReasonBadge reason={reason} />
         </div>
         <div class="group-members-preview">
           {preview.join(', ')}
@@ -440,9 +506,10 @@ type CascadeEntryProps = {
   cursorIdx: number
   onSetCursor: (idx: number) => void
   onFocus: () => void
+  reason?: VisualImpactReason
 }
 
-function CascadeEntry({ cluster, flatIdx, focused, cursorIdx, onSetCursor, onFocus }: CascadeEntryProps) {
+function CascadeEntry({ cluster, flatIdx, focused, cursorIdx, onSetCursor, onFocus, reason }: CascadeEntryProps) {
   const isFocused = focused && cursorIdx === flatIdx
   const preview = cluster.members.slice(0, PREVIEW_MAX).map(m => m.label)
   const moreCount = cluster.members.length - PREVIEW_MAX
@@ -465,6 +532,7 @@ function CascadeEntry({ cluster, flatIdx, focused, cursorIdx, onSetCursor, onFoc
         <div class="el-diff-title-row">
           <span class="cascade-count">{cluster.elementCount} elements</span>
           <span class="cascade-delta">{cluster.delta}</span>
+          <ReasonBadge reason={reason} />
         </div>
         {cluster.rootCause && (
           <div class="cascade-root-cause">

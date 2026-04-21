@@ -5,10 +5,14 @@ export type Change = {
   after?: string
 }
 
+export type VisualImpactReason = 'no-delta' | 'below-threshold' | 'same-computed'
+
 export type VisualImpactData = {
   mismatchPixels: number
   mismatchPercent: number
   verdict: 'visual' | 'pixel-identical'
+  /** Subcategory for the "not visible in the static capture" panel. Only set when verdict is pixel-identical. */
+  reason?: VisualImpactReason
 }
 
 export type ElementDiffData = {

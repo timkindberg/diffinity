@@ -300,6 +300,47 @@ kbd {
 .no-effect-items .el-diff.open { opacity: 1; }
 .no-effect-items .el-diff-importance { display: none; }
 
+/* Help glyph + per-reason breakdown in the demoted-panel header */
+.no-effect-help {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--bg3); color: var(--text3);
+  font-size: 9px; font-weight: 700; cursor: help;
+  margin-right: 4px;
+}
+.no-effect-help:hover { background: var(--border); color: var(--text2); }
+
+.no-effect-breakdown {
+  margin: 2px 12px 6px; font-size: 10px; line-height: 1.5;
+  color: var(--text3);
+}
+.no-effect-breakdown-item { white-space: nowrap; }
+.no-effect-breakdown-count { font-family: var(--mono); font-weight: 600; color: var(--text2); }
+.no-effect-breakdown-sep { color: var(--border); }
+
+/* Per-item reason badge */
+.reason-badge {
+  display: inline-flex; align-items: center;
+  padding: 1px 6px; border-radius: 10px;
+  font-size: 9px; font-weight: 600; line-height: 1.4;
+  font-family: var(--mono); white-space: nowrap;
+  background: color-mix(in srgb, var(--text3) 15%, transparent);
+  color: var(--text2);
+  margin-left: auto;
+}
+.reason-badge.reason-no-delta {
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+  color: color-mix(in srgb, var(--green) 85%, var(--text2));
+}
+.reason-badge.reason-same-computed {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: color-mix(in srgb, var(--accent) 85%, var(--text2));
+}
+.reason-badge.reason-below-threshold {
+  background: color-mix(in srgb, var(--yellow) 12%, transparent);
+  color: color-mix(in srgb, var(--yellow) 85%, var(--text2));
+}
+
 .group-member-item {
   display: flex; align-items: center; gap: 6px;
   font-size: 11px; color: var(--text2); padding: 5px 8px; margin: 2px 0;
