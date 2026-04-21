@@ -798,3 +798,46 @@ input, select, textarea { font: inherit; color: inherit; }
   border-top: 1px solid var(--color-border);
   margin: 0;
 }
+
+/* ============================================================
+ * Scenario switcher (dev-only, rendered by App when import.meta.env.DEV)
+ * Fixed bottom-right, semi-hidden until hovered. Never reaches production
+ * captures because it's gated on DEV, and never influences pixel diffs
+ * since scenario CSS is injected by Playwright independently.
+ * ============================================================ */
+.scenario-switcher {
+  position: fixed;
+  bottom: 8px;
+  right: 8px;
+  display: flex;
+  gap: 8px;
+  padding: 4px 8px;
+  background: rgba(17, 20, 26, 0.55);
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0.18;
+  transition: opacity 120ms ease;
+  z-index: 9999;
+  backdrop-filter: blur(4px);
+}
+.scenario-switcher:hover,
+.scenario-switcher:focus-within {
+  opacity: 1;
+}
+.scenario-switcher a {
+  color: rgba(255, 255, 255, 0.82);
+  text-decoration: none;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+.scenario-switcher a:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+.scenario-switcher a.active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+  font-weight: 600;
+}

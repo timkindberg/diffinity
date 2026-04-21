@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks'
 import { Layout } from './components/Layout'
+import { ScenarioSwitcher } from './components/ScenarioSwitcher'
 import { Dashboard } from './pages/Dashboard'
 import { TablePage } from './pages/TablePage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -23,10 +24,13 @@ export function App() {
   }, [])
 
   return (
-    <Layout route={route}>
-      {route === 'dashboard' && <Dashboard />}
-      {route === 'table' && <TablePage />}
-      {route === 'settings' && <SettingsPage />}
-    </Layout>
+    <>
+      <Layout route={route}>
+        {route === 'dashboard' && <Dashboard />}
+        {route === 'table' && <TablePage />}
+        {route === 'settings' && <SettingsPage />}
+      </Layout>
+      {import.meta.env.DEV && <ScenarioSwitcher />}
+    </>
   )
 }
