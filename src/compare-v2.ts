@@ -7,7 +7,7 @@ import { readdirSync, readFileSync, writeFileSync, existsSync, statSync, mkdirSy
 import { join, relative } from 'path'
 import { diffManifestsByViewport, type ViewportDiffResult } from './viewport-diff.js'
 import type { DomManifest } from './dom-manifest.js'
-import { classifyPairs, aggregateImpact, type Pair, type VisualImpact } from './visual-impact.js'
+import { classifyPairs, aggregateImpact, applyPseudoStateOverridesToViewport, type Pair, type VisualImpact } from './visual-impact.js'
 import { areChangesSameComputed } from './visual-reason.js'
 
 export type ComparePageOptions = {
@@ -274,6 +274,13 @@ function classifyViewportVisualImpact(input: ClassifyViewportInput): void {
       g.visualImpact.reason = 'same-computed'
     }
   }
+
+  // Pass 3: promote pixel-identical diffs back to `visual` when a changed
+  // property is also set by a rule targeting a tracked interactive pseudo-
+  // class on this element. Runs last so it wins over the `same-computed`
+  // upgrade — pseudo-state sensitivity is a reason to *show* the diff,
+  // whereas `same-computed` is a reason to demote it.
+  applyPseudoStateOverridesToViewport(viewportDiff, beforeManifest, afterManifest)
 
   recomputeVisualStructuralCounts(viewportDiff)
 }

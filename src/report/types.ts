@@ -13,6 +13,8 @@ export type VisualImpactData = {
   verdict: 'visual' | 'pixel-identical'
   /** Subcategory for the "not visible in the static capture" panel. Only set when verdict is pixel-identical. */
   reason?: VisualImpactReason
+  pseudoStateSensitive?: boolean
+  pseudoClasses?: string[]
 }
 
 export type ElementDiffData = {

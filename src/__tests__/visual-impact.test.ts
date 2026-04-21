@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { PNG } from 'pngjs'
-import { classifyElementPair, classifyPairs, aggregateImpact, type VisualImpact } from '../visual-impact.js'
+import {
+  classifyElementPair, classifyPairs, aggregateImpact,
+  detectPseudoStateSensitivity, applyPseudoStateOverride,
+  applyPseudoStateOverridesToViewport,
+  type VisualImpact,
+} from '../visual-impact.js'
+import type { ElementNode } from '../dom-manifest.js'
 import { el, manifest, resetIdx } from './test-helpers.js'
 
 beforeEach(() => resetIdx())
@@ -246,3 +252,220 @@ describe('classifyPairs (end-to-end, synthetic PNGs)', () => {
     expect(impacts.size).toBe(0)
   })
 })
+
+describe('detectPseudoStateSensitivity', () => {
+  it('returns null when the element has no pseudo-state rules', () => {
+    expect(detectPseudoStateSensitivity(undefined, ['border-radius'])).toBeNull()
+    expect(detectPseudoStateSensitivity([], ['border-radius'])).toBeNull()
+  })
+
+  it('returns null when none of the rule properties overlap with changed props', () => {
+    const rules = [{ pseudoClasses: ['hover'], properties: ['background-color'] }]
+    expect(detectPseudoStateSensitivity(rules, ['color'])).toBeNull()
+  })
+
+  it('matches the collapsed `border-radius` shorthand against longhand rule props', () => {
+    // The diff engine collapses 4 identical corner radius changes into a single
+    // `border-radius` diff; CSSOM enumerates longhands — we must expand before
+    // comparing.
+    const rules = [{
+      pseudoClasses: ['hover'],
+      properties: ['border-top-left-radius', 'border-top-right-radius',
+                   'border-bottom-left-radius', 'border-bottom-right-radius'],
+    }]
+    expect(detectPseudoStateSensitivity(rules, ['border-radius'])).toEqual(['hover'])
+  })
+
+  it('unions pseudo-classes across matching rules and sorts the result', () => {
+    const rules = [
+      { pseudoClasses: ['hover'], properties: ['background-color'] },
+      { pseudoClasses: ['focus-visible'], properties: ['background-color'] },
+      { pseudoClasses: ['active'], properties: ['color'] },
+    ]
+    expect(detectPseudoStateSensitivity(rules, ['background-color'])).toEqual(['focus-visible', 'hover'])
+  })
+})
+
+describe('applyPseudoStateOverride', () => {
+  const identical: VisualImpact = { mismatchPixels: 0, mismatchPercent: 0, verdict: 'pixel-identical' }
+
+  it('flips a pixel-identical verdict to visual and records pseudo-classes', () => {
+    const out = applyPseudoStateOverride(identical, ['hover', 'focus'])
+    expect(out.verdict).toBe('visual')
+    expect(out.pseudoStateSensitive).toBe(true)
+    expect(out.pseudoClasses).toEqual(['hover', 'focus'])
+  })
+
+  it('returns the original impact when no pseudo-classes apply', () => {
+    expect(applyPseudoStateOverride(identical, null)).toBe(identical)
+    expect(applyPseudoStateOverride(identical, [])).toBe(identical)
+  })
+
+  it('preserves pixel mismatch numbers while overriding the verdict', () => {
+    const almost: VisualImpact = { mismatchPixels: 2, mismatchPercent: 0.04, verdict: 'pixel-identical' }
+    const out = applyPseudoStateOverride(almost, ['hover'])
+    expect(out.mismatchPixels).toBe(2)
+    expect(out.mismatchPercent).toBe(0.04)
+    expect(out.verdict).toBe('visual')
+  })
+})
+
+describe('applyPseudoStateOverridesToViewport (integration)', () => {
+  const IDENTICAL: VisualImpact = { mismatchPixels: 0, mismatchPercent: 0, verdict: 'pixel-identical' }
+  const VISUAL: VisualImpact = { mismatchPixels: 42, mismatchPercent: 1.2, verdict: 'visual' }
+
+  const btnHoverRadiusRules = [{
+    pseudoClasses: ['hover'],
+    properties: ['border-top-left-radius', 'border-top-right-radius',
+                 'border-bottom-left-radius', 'border-bottom-right-radius'],
+  }]
+
+  function buildManifests(beforeOpts: Partial<ElementNode>, afterOpts: Partial<ElementNode>) {
+    resetIdx()
+    const beforeBtn = el('button', beforeOpts)
+    const beforeRoot = el('body', { children: [beforeBtn] })
+    const before = manifest(beforeRoot)
+
+    resetIdx()
+    const afterBtn = el('button', afterOpts)
+    const afterRoot = el('body', { children: [afterBtn] })
+    const after = manifest(afterRoot)
+
+    return { before, after, beforeBtn, afterBtn }
+  }
+
+  it('promotes a pixel-identical `border-radius` diff to visual when .btn:hover touches it', () => {
+    // Mirrors the canonical example from vr-c8q: `.btn` border-radius 4→8px.
+    // Static pixels are identical (white-on-white resting state), but
+    // `.btn:hover` sets border-radius so the change would clearly show on hover.
+    const { before, after, beforeBtn, afterBtn } = buildManifests(
+      { pseudoStateRules: btnHoverRadiusRules },
+      { pseudoStateRules: btnHoverRadiusRules },
+    )
+
+    const vp = {
+      diffs: [{
+        beforeIdx: beforeBtn.idx,
+        afterIdx: afterBtn.idx,
+        changes: [{ property: 'border-radius' }],
+        visualImpact: { ...IDENTICAL },
+      }],
+      groups: [],
+      cascadeClusters: [],
+    }
+
+    applyPseudoStateOverridesToViewport(vp, before, after)
+
+    const impact = vp.diffs[0].visualImpact!
+    expect(impact.verdict).toBe('visual')
+    expect(impact.pseudoStateSensitive).toBe(true)
+    expect(impact.pseudoClasses).toEqual(['hover'])
+  })
+
+  it('leaves a diff alone when changed props do not overlap with the pseudo-state rule', () => {
+    // Rule on :hover only touches border-radius. The diff only changed color —
+    // no pseudo-state sensitivity, the demoted verdict stands.
+    const { before, after, beforeBtn, afterBtn } = buildManifests(
+      { pseudoStateRules: btnHoverRadiusRules },
+      { pseudoStateRules: btnHoverRadiusRules },
+    )
+
+    const vp = {
+      diffs: [{
+        beforeIdx: beforeBtn.idx,
+        afterIdx: afterBtn.idx,
+        changes: [{ property: 'color' }],
+        visualImpact: { ...IDENTICAL },
+      }],
+      groups: [],
+      cascadeClusters: [],
+    }
+
+    applyPseudoStateOverridesToViewport(vp, before, after)
+
+    expect(vp.diffs[0].visualImpact!.verdict).toBe('pixel-identical')
+    expect(vp.diffs[0].visualImpact!.pseudoStateSensitive).toBeUndefined()
+  })
+
+  it('promotes a pixel-identical group when any member has a matching pseudo-state rule', () => {
+    // Six nav buttons share a grouped border-radius change. Only `.btn` (not
+    // `.nav-icon-btn`) has a :hover rule that touches border-radius, but that
+    // single overlap is enough to keep the group in the main list.
+    resetIdx()
+    const btnA = el('button', { pseudoStateRules: btnHoverRadiusRules })
+    const btnB = el('button')
+    const beforeRoot = el('body', { children: [btnA, btnB] })
+    const before = manifest(beforeRoot)
+
+    resetIdx()
+    const btnAA = el('button', { pseudoStateRules: btnHoverRadiusRules })
+    const btnBA = el('button')
+    const afterRoot = el('body', { children: [btnAA, btnBA] })
+    const after = manifest(afterRoot)
+
+    const vp = {
+      diffs: [],
+      groups: [{
+        changes: [{ property: 'border-radius' }],
+        members: [
+          { beforeIdx: btnA.idx, afterIdx: btnAA.idx },
+          { beforeIdx: btnB.idx, afterIdx: btnBA.idx },
+        ],
+        visualImpact: { ...IDENTICAL },
+      }],
+      cascadeClusters: [],
+    }
+
+    applyPseudoStateOverridesToViewport(vp, before, after)
+
+    expect(vp.groups[0].visualImpact!.verdict).toBe('visual')
+    expect(vp.groups[0].visualImpact!.pseudoStateSensitive).toBe(true)
+    expect(vp.groups[0].visualImpact!.pseudoClasses).toEqual(['hover'])
+  })
+
+  it('does not touch an already-visual verdict (pixelmatch wins)', () => {
+    // If pixelmatch already said "visual", preserving the raw verdict matters —
+    // we still badge pseudo-state sensitivity but the verdict stays "visual".
+    const { before, after, beforeBtn, afterBtn } = buildManifests(
+      { pseudoStateRules: btnHoverRadiusRules },
+      { pseudoStateRules: btnHoverRadiusRules },
+    )
+
+    const vp = {
+      diffs: [{
+        beforeIdx: beforeBtn.idx,
+        afterIdx: afterBtn.idx,
+        changes: [{ property: 'border-radius' }],
+        visualImpact: { ...VISUAL },
+      }],
+      groups: [],
+      cascadeClusters: [],
+    }
+
+    applyPseudoStateOverridesToViewport(vp, before, after)
+
+    expect(vp.diffs[0].visualImpact!.verdict).toBe('visual')
+    expect(vp.diffs[0].visualImpact!.pseudoStateSensitive).toBe(true)
+  })
+
+  it('is a no-op when manifests have no pseudo-state rules', () => {
+    const { before, after, beforeBtn, afterBtn } = buildManifests({}, {})
+
+    const vp = {
+      diffs: [{
+        beforeIdx: beforeBtn.idx,
+        afterIdx: afterBtn.idx,
+        changes: [{ property: 'border-radius' }],
+        visualImpact: { ...IDENTICAL },
+      }],
+      groups: [],
+      cascadeClusters: [],
+    }
+
+    applyPseudoStateOverridesToViewport(vp, before, after)
+
+    expect(vp.diffs[0].visualImpact!.verdict).toBe('pixel-identical')
+    expect(vp.diffs[0].visualImpact!.pseudoStateSensitive).toBeUndefined()
+  })
+})
+

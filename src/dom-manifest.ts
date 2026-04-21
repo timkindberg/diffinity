@@ -38,6 +38,11 @@ const VISUAL_STYLE_PROPS = [
   'transform', 'cursor', 'content', 'list-style-type', 'list-style-position',
 ]
 
+export type PseudoStateRule = {
+  pseudoClasses: string[]
+  properties: string[]
+}
+
 export type ElementNode = {
   idx: number
   tag: string
@@ -51,6 +56,7 @@ export type ElementNode = {
   bbox: { x: number; y: number; w: number; h: number }
   styles: Record<string, string>
   explicitProps?: string[]
+  pseudoStateRules?: PseudoStateRule[]
   children: ElementNode[]
 }
 
@@ -299,6 +305,107 @@ function mergeExplicitProps(node: ElementNode, propsMap: Record<string, string[]
   }
 }
 
+/**
+ * Browser-side function passed to page.evaluate().
+ * Walks document.styleSheets for rules whose selector contains a tracked
+ * pseudo-class (e.g. `:hover`, `:focus`). For each matching rule, strips the
+ * pseudo-classes to find candidate elements and records which properties the
+ * rule sets against each element's data-vr-idx.
+ *
+ * Used downstream to keep diffs in the main report list when a changed property
+ * would also affect that element's `:hover` / `:focus` / etc. states — even if
+ * static rendered pixels are identical.
+ */
+function capturePseudoStateRulesInBrowser(args: [string[], string[]]) {
+  const [styleProps, statePseudos] = args
+  const tracked = new Set(styleProps)
+
+  const map = new Map<string, { pseudoClasses: string[]; properties: string[] }[]>()
+
+  function extractPseudos(selector: string): string[] {
+    const found = new Set<string>()
+    for (const p of statePseudos) {
+      const re = new RegExp(`(?<!:):${p}(?![a-z-])`)
+      if (re.test(selector)) found.add(p)
+    }
+    return [...found]
+  }
+
+  function stripPseudos(selector: string): string {
+    let out = selector
+    for (const p of statePseudos) {
+      const re = new RegExp(`(?<!:):${p}(?:\\([^)]*\\))?`, 'g')
+      out = out.replace(re, '')
+    }
+    return out.trim()
+  }
+
+  function addRule(idx: string, pseudoClasses: string[], properties: string[]) {
+    let list = map.get(idx)
+    if (!list) { list = []; map.set(idx, list) }
+    list.push({ pseudoClasses, properties })
+  }
+
+  function walkRules(rules: CSSRuleList) {
+    for (let i = 0; i < rules.length; i++) {
+      const rule = rules[i]
+      if (rule instanceof CSSStyleRule) {
+        const pseudoClasses = extractPseudos(rule.selectorText)
+        if (pseudoClasses.length === 0) continue
+
+        const stripped = stripPseudos(rule.selectorText)
+        if (!stripped) continue
+
+        const properties: string[] = []
+        for (let j = 0; j < rule.style.length; j++) {
+          const propName = rule.style[j]
+          if (tracked.has(propName)) properties.push(propName)
+        }
+        if (properties.length === 0) continue
+
+        let matches: NodeListOf<Element>
+        try { matches = document.querySelectorAll(stripped) } catch { continue }
+        for (const el of matches) {
+          const idx = el.getAttribute('data-vr-idx')
+          if (!idx) continue
+          addRule(idx, pseudoClasses, properties)
+        }
+      } else if ('cssRules' in rule) {
+        walkRules((rule as CSSGroupingRule).cssRules)
+      }
+    }
+  }
+
+  for (const sheet of document.styleSheets) {
+    try { walkRules(sheet.cssRules) } catch { continue }
+  }
+
+  const result: Record<string, { pseudoClasses: string[]; properties: string[] }[]> = {}
+  for (const [idx, list] of map) result[idx] = list
+  return result
+}
+
+/** Merge pseudo-state rule data into the manifest tree by idx. */
+function mergePseudoStateRules(
+  node: ElementNode,
+  rulesMap: Record<string, { pseudoClasses: string[]; properties: string[] }[]>,
+) {
+  const rules = rulesMap[String(node.idx)]
+  if (rules && rules.length > 0) node.pseudoStateRules = rules
+  for (const child of node.children) {
+    mergePseudoStateRules(child, rulesMap)
+  }
+}
+
+/**
+ * Interactive pseudo-classes tracked for the pseudo-state-sensitive classifier.
+ * Structural pseudo-classes (`:nth-child`, `:first-of-type`, ...) are not
+ * included — they describe static DOM position, not interactive state.
+ */
+const STATE_PSEUDO_CLASSES = [
+  'hover', 'focus', 'focus-visible', 'focus-within', 'active', 'visited',
+]
+
 /** Merge accessible names into the manifest tree by idx. */
 function mergeAccessibleNames(node: ElementNode, nameMap: Map<number, string>) {
   const name = nameMap.get(node.idx)
@@ -330,7 +437,10 @@ export async function captureDomManifest(
   const result = await page.evaluate(captureManifestInBrowser, VISUAL_STYLE_PROPS)
   const domWalkMs = Date.now() - t0
 
-  // CSSOM pass: capture which properties were explicitly authored via stylesheets/inline
+  // CSSOM pass: capture which properties were explicitly authored via stylesheets/inline,
+  // plus pseudo-state rules (:hover, :focus, ...) so the visual-impact classifier can
+  // keep pixel-identical diffs in the main list when a changed property also drives
+  // an interactive state.
   const t1a = Date.now()
   if (result.root) {
     try {
@@ -338,6 +448,15 @@ export async function captureDomManifest(
       mergeExplicitProps(result.root as ElementNode, explicitPropsMap)
     } catch (err) {
       log(`  CSSOM explicit props pass failed: ${err instanceof Error ? err.message : err}`)
+    }
+    try {
+      const pseudoStateMap = await page.evaluate(
+        capturePseudoStateRulesInBrowser,
+        [VISUAL_STYLE_PROPS, STATE_PSEUDO_CLASSES] as [string[], string[]],
+      )
+      mergePseudoStateRules(result.root as ElementNode, pseudoStateMap)
+    } catch (err) {
+      log(`  CSSOM pseudo-state pass failed: ${err instanceof Error ? err.message : err}`)
     }
   }
   const cssomMs = Date.now() - t1a

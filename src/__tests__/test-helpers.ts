@@ -24,6 +24,7 @@ export function el(tag: string, opts: NodeOptions = {}): ElementNode {
     children: opts.children ?? [],
   }
   if (opts.explicitProps) node.explicitProps = opts.explicitProps
+  if (opts.pseudoStateRules) node.pseudoStateRules = opts.pseudoStateRules
   return node
 }
 

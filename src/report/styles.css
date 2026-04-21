@@ -227,6 +227,18 @@ kbd {
 .el-diff.kb-focused .el-diff-label { color: var(--text); }
 .el-diff-count { font-size: 10px; color: var(--text3); flex-shrink: 0; }
 
+.pseudo-state-badge {
+  font-size: 10px;
+  font-family: var(--mono);
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  flex-shrink: 0;
+  white-space: nowrap;
+  cursor: help;
+}
+
 .el-diff-body { display: none; padding: 0 12px 10px 12px; }
 .el-diff.open .el-diff-body { display: block; }
 .el-diff-selector { font-size: 10px; font-family: var(--mono); color: var(--text3); padding: 2px 0 6px; word-break: break-all; }

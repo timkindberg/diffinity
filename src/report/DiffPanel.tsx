@@ -76,6 +76,21 @@ function ValLine({ sign, cls, val, isColor }: { sign: string; cls: string; val: 
   )
 }
 
+function PseudoStateBadge({ impact }: { impact?: { pseudoStateSensitive?: boolean; pseudoClasses?: string[] } }) {
+  if (!impact?.pseudoStateSensitive) return null
+  const classes = impact.pseudoClasses ?? []
+  if (classes.length === 0) return null
+  const label = classes.map(c => `:${c}`).join(', ')
+  return (
+    <span
+      class="pseudo-state-badge"
+      title="A rule targeting this pseudo-class sets a changed property — rendered pixels look identical, but interactive state may differ."
+    >
+      may affect {label}
+    </span>
+  )
+}
+
 function ChangeRow({ c }: { c: Change }) {
   const isColor = COLOR_PROPS.includes(c.property)
   let lines
@@ -420,6 +435,7 @@ function DiffEntry({ diff, flatIdx, focused, cursorIdx, onSetCursor, onFocus, re
           <span class="el-diff-label">{diff.label}</span>
           {diff.changes.length > 1 && <span class="el-diff-count">{diff.changes.length}</span>}
           <ReasonBadge reason={reason} />
+          <PseudoStateBadge impact={diff.visualImpact} />
         </div>
       </div>
       <div class="el-diff-body">
@@ -467,6 +483,7 @@ function GroupEntry({ group, flatIdx, focused, cursorIdx, onSetCursor, onFocus, 
           <span class="el-diff-label">Multiple Similar &times;{group.members.length}</span>
           <span class="group-changes-summary">{propNames}</span>
           <ReasonBadge reason={reason} />
+          <PseudoStateBadge impact={group.visualImpact} />
         </div>
         <div class="group-members-preview">
           {preview.join(', ')}
@@ -533,6 +550,7 @@ function CascadeEntry({ cluster, flatIdx, focused, cursorIdx, onSetCursor, onFoc
           <span class="cascade-count">{cluster.elementCount} elements</span>
           <span class="cascade-delta">{cluster.delta}</span>
           <ReasonBadge reason={reason} />
+          <PseudoStateBadge impact={cluster.visualImpact} />
         </div>
         {cluster.rootCause && (
           <div class="cascade-root-cause">
