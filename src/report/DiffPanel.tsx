@@ -76,17 +76,29 @@ function ValLine({ sign, cls, val, isColor }: { sign: string; cls: string; val: 
   )
 }
 
-function PseudoStateBadge({ impact }: { impact?: { pseudoStateSensitive?: boolean; pseudoClasses?: string[] } }) {
+function PseudoStateBadge({ impact }: {
+  impact?: {
+    pseudoStateSensitive?: boolean
+    pseudoClasses?: string[]
+    pseudoClassMemberCounts?: { pc: string; matched: number; total: number }[]
+  }
+}) {
   if (!impact?.pseudoStateSensitive) return null
   const classes = impact.pseudoClasses ?? []
   if (classes.length === 0) return null
-  const label = classes.map(c => `:${c}`).join(', ')
+  const counts = impact.pseudoClassMemberCounts
+  const countsByPc = counts ? new Map(counts.map(c => [c.pc, c])) : undefined
+  const parts = classes.map(c => {
+    const info = countsByPc?.get(c)
+    if (info && info.matched < info.total) return `:${c} (${info.matched} of ${info.total})`
+    return `:${c}`
+  })
   return (
     <span
       class="pseudo-state-badge"
-      title="A rule targeting this pseudo-class sets a changed property — rendered pixels look identical, but interactive state may differ."
+      title="An interactive-pseudo-class rule on this element touches a changed property — the diff may only become visible on that state."
     >
-      may affect {label}
+      may affect {parts.join(', ')}
     </span>
   )
 }

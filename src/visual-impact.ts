@@ -49,6 +49,13 @@ export type VisualImpact = {
   pseudoStateSensitive?: boolean
   /** Pseudo-class names (without the leading colon) that drive the sensitivity. */
   pseudoClasses?: string[]
+  /**
+   * Per-pseudo-class member match counts. Only populated for groups/clusters
+   * where at least one pseudo-class is partial (matched < total). Unanimous
+   * groups and single-item diffs leave this unset — the `(N of M)` fraction
+   * is only rendered when it carries information.
+   */
+  pseudoClassMemberCounts?: { pc: string; matched: number; total: number }[]
 }
 
 export type ClassifyOptions = {
@@ -376,17 +383,22 @@ export function detectPseudoStateSensitivity(
 export function applyPseudoStateOverride(
   impact: VisualImpact,
   pseudoClasses: string[] | null,
+  memberCounts?: { pc: string; matched: number; total: number }[],
 ): VisualImpact {
   if (!pseudoClasses || pseudoClasses.length === 0) return impact
   // Drop `reason` when flipping to visual — it's only meaningful for
   // pixel-identical diffs (it answers "why was this demoted?").
   const { reason: _reason, ...rest } = impact
-  return {
+  const out: VisualImpact = {
     ...rest,
     verdict: 'visual',
     pseudoStateSensitive: true,
     pseudoClasses,
   }
+  if (memberCounts && memberCounts.length > 0) {
+    out.pseudoClassMemberCounts = memberCounts
+  }
+  return out
 }
 
 // Minimal shapes so this module stays free of cycles with viewport-diff /
@@ -446,6 +458,11 @@ export function applyPseudoStateOverridesToViewport(
 
   for (const d of viewportDiff.diffs) {
     if (!d.visualImpact) continue
+    // Only rescue *still-demoted* diffs. A diff pixelmatch already marked
+    // "visual" is visibly different — badging it "may affect :hover" would
+    // be noise, and the accompanying tooltip ("pixels look identical") would
+    // be wrong. Skip it.
+    if (d.visualImpact.verdict !== 'pixel-identical') continue
     const rules = elementRules(d.beforeIdx, d.afterIdx)
     const props = d.changes.map(c => c.property)
     const pseudos = detectPseudoStateSensitivity(rules, props)
@@ -455,26 +472,39 @@ export function applyPseudoStateOverridesToViewport(
   const aggregateMemberPseudos = (
     members: PseudoStateOverrideMember[],
     changedProperties: string[],
-  ): string[] | null => {
-    const matched = new Set<string>()
+  ): { pseudoClasses: string[]; memberCounts?: { pc: string; matched: number; total: number }[] } | null => {
+    const counts = new Map<string, number>()
+    const total = members.length
     for (const m of members) {
       const rules = elementRules(m.beforeIdx, m.afterIdx)
       const p = detectPseudoStateSensitivity(rules, changedProperties)
-      if (p) for (const pc of p) matched.add(pc)
+      if (!p) continue
+      for (const pc of p) counts.set(pc, (counts.get(pc) ?? 0) + 1)
     }
-    return matched.size > 0 ? [...matched].sort() : null
+    if (counts.size === 0) return null
+    const pseudoClasses = [...counts.keys()].sort()
+    const anyPartial = pseudoClasses.some(pc => (counts.get(pc) ?? 0) < total)
+    if (!anyPartial) return { pseudoClasses }
+    const memberCounts = pseudoClasses.map(pc => ({
+      pc,
+      matched: counts.get(pc) ?? 0,
+      total,
+    }))
+    return { pseudoClasses, memberCounts }
   }
 
   for (const g of viewportDiff.groups) {
     if (!g.visualImpact) continue
+    if (g.visualImpact.verdict !== 'pixel-identical') continue
     const props = g.changes.map(c => c.property)
-    const pseudos = aggregateMemberPseudos(g.members, props)
-    if (pseudos) g.visualImpact = applyPseudoStateOverride(g.visualImpact, pseudos)
+    const agg = aggregateMemberPseudos(g.members, props)
+    if (agg) g.visualImpact = applyPseudoStateOverride(g.visualImpact, agg.pseudoClasses, agg.memberCounts)
   }
 
   for (const c of viewportDiff.cascadeClusters) {
     if (!c.visualImpact) continue
-    const pseudos = aggregateMemberPseudos(c.members, c.properties)
-    if (pseudos) c.visualImpact = applyPseudoStateOverride(c.visualImpact, pseudos)
+    if (c.visualImpact.verdict !== 'pixel-identical') continue
+    const agg = aggregateMemberPseudos(c.members, c.properties)
+    if (agg) c.visualImpact = applyPseudoStateOverride(c.visualImpact, agg.pseudoClasses, agg.memberCounts)
   }
 }

@@ -485,9 +485,11 @@ describe('applyPseudoStateOverridesToViewport (integration)', () => {
     expect(vp.groups[0].visualImpact!.pseudoClasses).toEqual(['hover'])
   })
 
-  it('does not touch an already-visual verdict (pixelmatch wins)', () => {
-    // If pixelmatch already said "visual", preserving the raw verdict matters —
-    // we still badge pseudo-state sensitivity but the verdict stays "visual".
+  it('does not badge an already-visual verdict', () => {
+    // Pixelmatch already classified this diff as "visual" (the element looks
+    // plainly different in the static capture). Adding a "may affect :hover"
+    // badge here is noise — the tooltip would lie about pixels being
+    // identical. Leave the impact untouched.
     const { before, after, beforeBtn, afterBtn } = buildManifests(
       { pseudoStateRules: btnHoverRadiusRules },
       { pseudoStateRules: btnHoverRadiusRules },
@@ -507,7 +509,90 @@ describe('applyPseudoStateOverridesToViewport (integration)', () => {
     applyPseudoStateOverridesToViewport(vp, before, after)
 
     expect(vp.diffs[0].visualImpact!.verdict).toBe('visual')
-    expect(vp.diffs[0].visualImpact!.pseudoStateSensitive).toBe(true)
+    expect(vp.diffs[0].visualImpact!.pseudoStateSensitive).toBeUndefined()
+    expect(vp.diffs[0].visualImpact!.pseudoClasses).toBeUndefined()
+  })
+
+  it('records (N of M) counts when only some group members are pseudo-sensitive', () => {
+    // Input "Search" has a :focus rule touching the changed property.
+    // Select "Filter" has no :focus rule. Grouped border-radius-style change
+    // would otherwise promote the whole group with a misleading badge; the
+    // fraction tells readers which members actually drive the override.
+    const focusRules = [{
+      pseudoClasses: ['focus'],
+      properties: ['border-top-left-radius', 'border-top-right-radius',
+                   'border-bottom-left-radius', 'border-bottom-right-radius'],
+    }]
+    resetIdx()
+    const input = el('input', { pseudoStateRules: focusRules })
+    const select = el('select')
+    const beforeRoot = el('body', { children: [input, select] })
+    const before = manifest(beforeRoot)
+
+    resetIdx()
+    const inputA = el('input', { pseudoStateRules: focusRules })
+    const selectA = el('select')
+    const afterRoot = el('body', { children: [inputA, selectA] })
+    const after = manifest(afterRoot)
+
+    const vp = {
+      diffs: [],
+      groups: [{
+        changes: [{ property: 'border-radius' }],
+        members: [
+          { beforeIdx: input.idx, afterIdx: inputA.idx },
+          { beforeIdx: select.idx, afterIdx: selectA.idx },
+        ],
+        visualImpact: { ...IDENTICAL },
+      }],
+      cascadeClusters: [],
+    }
+
+    applyPseudoStateOverridesToViewport(vp, before, after)
+
+    const impact = vp.groups[0].visualImpact!
+    expect(impact.verdict).toBe('visual')
+    expect(impact.pseudoStateSensitive).toBe(true)
+    expect(impact.pseudoClasses).toEqual(['focus'])
+    expect(impact.pseudoClassMemberCounts).toEqual([{ pc: 'focus', matched: 1, total: 2 }])
+  })
+
+  it('omits memberCounts when every group member has the pseudo rule', () => {
+    const focusRules = [{
+      pseudoClasses: ['focus'],
+      properties: ['border-top-left-radius', 'border-top-right-radius',
+                   'border-bottom-left-radius', 'border-bottom-right-radius'],
+    }]
+    resetIdx()
+    const a = el('input', { pseudoStateRules: focusRules })
+    const b = el('input', { pseudoStateRules: focusRules })
+    const beforeRoot = el('body', { children: [a, b] })
+    const before = manifest(beforeRoot)
+
+    resetIdx()
+    const aA = el('input', { pseudoStateRules: focusRules })
+    const bA = el('input', { pseudoStateRules: focusRules })
+    const afterRoot = el('body', { children: [aA, bA] })
+    const after = manifest(afterRoot)
+
+    const vp = {
+      diffs: [],
+      groups: [{
+        changes: [{ property: 'border-radius' }],
+        members: [
+          { beforeIdx: a.idx, afterIdx: aA.idx },
+          { beforeIdx: b.idx, afterIdx: bA.idx },
+        ],
+        visualImpact: { ...IDENTICAL },
+      }],
+      cascadeClusters: [],
+    }
+
+    applyPseudoStateOverridesToViewport(vp, before, after)
+
+    const impact = vp.groups[0].visualImpact!
+    expect(impact.pseudoClasses).toEqual(['focus'])
+    expect(impact.pseudoClassMemberCounts).toBeUndefined()
   })
 
   it('is a no-op when manifests have no pseudo-state rules', () => {

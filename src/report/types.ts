@@ -15,6 +15,8 @@ export type VisualImpactData = {
   reason?: VisualImpactReason
   pseudoStateSensitive?: boolean
   pseudoClasses?: string[]
+  /** Per-pseudo-class member match counts; only set for partial group matches. */
+  pseudoClassMemberCounts?: { pc: string; matched: number; total: number }[]
 }
 
 export type ElementDiffData = {
