@@ -239,6 +239,9 @@ kbd {
   cursor: help;
 }
 
+.el-diff-pseudo-row { padding-top: 3px; }
+.el-diff-pseudo-row:empty { display: none; }
+
 .el-diff-body { display: none; padding: 0 12px 10px 12px; }
 .el-diff.open .el-diff-body { display: block; }
 .el-diff-selector { font-size: 10px; font-family: var(--mono); color: var(--text3); padding: 2px 0 6px; word-break: break-all; }
@@ -247,7 +250,7 @@ kbd {
 .group-members-preview {
   font-size: 10px; color: var(--text3); padding: 2px 0 0 0; line-height: 1.5;
 }
-.group-members-preview .more { color: var(--accent); }
+.group-members-preview .more { color: var(--text3); }
 
 .group-changes-summary {
   font-size: 10px; font-family: var(--mono); color: var(--text3); flex-basis: 100%;

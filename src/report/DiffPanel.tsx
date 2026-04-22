@@ -21,7 +21,7 @@ type Props = {
 }
 
 const TYPE_CHAR: Record<string, string> = {
-  changed: '~', added: '+', removed: '\u2212', moved: '\u2194', 'moved+changed': '\u2194',
+  changed: '', added: '+', removed: '\u2212', moved: '\u2194', 'moved+changed': '\u2194',
 }
 const IMP_ORDER: Record<string, number> = { critical: 0, major: 1, moderate: 2, minor: 3 }
 const PREVIEW_MAX = 4
@@ -441,14 +441,14 @@ function DiffEntry({ diff, flatIdx, focused, cursorIdx, onSetCursor, onFocus, re
       }}>
         <div class="el-diff-badges">
           <span class={`el-diff-importance imp-${imp}`}>{imp}</span>
-          <span class={`el-diff-type ${diff.type}`}>{TYPE_CHAR[diff.type] || '~'}</span>
+          {TYPE_CHAR[diff.type] && <span class={`el-diff-type ${diff.type}`}>{TYPE_CHAR[diff.type]}</span>}
         </div>
         <div class="el-diff-title-row">
           <span class="el-diff-label">{diff.label}</span>
           {diff.changes.length > 1 && <span class="el-diff-count">{diff.changes.length}</span>}
           <ReasonBadge reason={reason} />
-          <PseudoStateBadge impact={diff.visualImpact} />
         </div>
+        <div class="el-diff-pseudo-row"><PseudoStateBadge impact={diff.visualImpact} /></div>
       </div>
       <div class="el-diff-body">
         {diff.selector && <div class="el-diff-selector">{diff.selector}</div>}
@@ -489,7 +489,7 @@ function GroupEntry({ group, flatIdx, focused, cursorIdx, onSetCursor, onFocus, 
       }}>
         <div class="el-diff-badges">
           <span class={`el-diff-importance imp-${imp}`}>{imp}</span>
-          <span class={`el-diff-type ${group.type}`}>{TYPE_CHAR[group.type] || '~'}</span>
+          {TYPE_CHAR[group.type] && <span class={`el-diff-type ${group.type}`}>{TYPE_CHAR[group.type]}</span>}
         </div>
         <div class="el-diff-title-row">
           <span class="el-diff-label">Multiple Similar &times;{group.members.length}</span>
@@ -499,7 +499,7 @@ function GroupEntry({ group, flatIdx, focused, cursorIdx, onSetCursor, onFocus, 
         </div>
         <div class="group-members-preview">
           {preview.join(', ')}
-          {moreCount > 0 && <>, <span class="more">+{moreCount} more...</span></>}
+          {moreCount > 0 && <>, <span class="more">and more...</span></>}
         </div>
       </div>
       <div class="el-diff-body">
@@ -573,7 +573,7 @@ function CascadeEntry({ cluster, flatIdx, focused, cursorIdx, onSetCursor, onFoc
       <div class="el-diff-body">
         <div class="group-members-preview">
           {preview.join(', ')}
-          {moreCount > 0 && <>, <span class="more">+{moreCount} more...</span></>}
+          {moreCount > 0 && <>, <span class="more">and more...</span></>}
         </div>
         {cluster.members.map((m, mi) => (
           <div
