@@ -59,13 +59,16 @@ export type VisualImpact = {
 }
 
 export type ClassifyOptions = {
-  /** pixelmatch perceptual threshold (0..1). Default: 0.1 */
+  /** pixelmatch perceptual threshold (0..1). Default: 0.02 */
   threshold?: number
   /** Element classified pixel-identical when mismatchPercent ≤ this. Default: 0.1 */
   maxMismatchPercent?: number
 }
 
-const DEFAULT_THRESHOLD = 0.1
+// pixelmatch's YIQ distance under-weights hue-only shifts (purple→green pastels
+// register as similar). 0.02 catches those without swamping us in subpixel
+// font noise, which we further tamp down with includeAA: false.
+const DEFAULT_THRESHOLD = 0.02
 const DEFAULT_MAX_MISMATCH_PERCENT = 0.1
 
 type Png = InstanceType<typeof PNG>
@@ -124,7 +127,7 @@ function classifyElementPairFull(
   if (bc.width !== ac.width || bc.height !== ac.height) return null
 
   const diffImg = new PNG({ width: bc.width, height: bc.height })
-  const mismatchPixels = pixelmatch(bc.data, ac.data, diffImg.data, bc.width, bc.height, { threshold })
+  const mismatchPixels = pixelmatch(bc.data, ac.data, diffImg.data, bc.width, bc.height, { threshold, includeAA: false })
   const total = bc.width * bc.height
   const mismatchPercent = total > 0 ? (mismatchPixels / total) * 100 : 0
   const verdict: VisualImpactVerdict = mismatchPercent <= maxMismatchPercent ? 'pixel-identical' : 'visual'
