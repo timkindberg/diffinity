@@ -1,6 +1,6 @@
 {
   "name": "diffinity",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Semantic DOM diffing engine — capture, compare, and report visual regressions",
   "license": "MIT",
   "author": "Tim Kindberg",
