@@ -11,6 +11,7 @@ demo/after/
 # Gas Town (polecat runtime)
 .beads/
 .claude/
+.cursor/
 .runtime/
 CLAUDE.md
 
