@@ -56,8 +56,7 @@
   },
   "dependencies": {
     "pixelmatch": "^6.0.0",
-    "pngjs": "^7.0.0",
-    "purgecss": "^8.0.0"
+    "pngjs": "^7.0.0"
   },
   "peerDependencies": {
     "playwright": ">=1.40.0"
