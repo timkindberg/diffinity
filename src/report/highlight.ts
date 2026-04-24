@@ -40,6 +40,7 @@ export function clearHighlights() {
 export function highlightMulti(
   members: { beforeIdx?: number; afterIdx?: number }[],
   type: string,
+  changedProps: string[] = [],
 ) {
   clearHighlights()
   for (const iframe of getIframes()) {
@@ -53,7 +54,7 @@ export function highlightMulti(
     try {
       iframe.contentWindow?.postMessage({
         source: 'vr-report', action: 'highlight-multi',
-        indices, type, phase,
+        indices, type, changedProps, phase,
       }, '*')
     } catch { /* cross-origin ignore */ }
   }

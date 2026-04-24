@@ -5,10 +5,20 @@ let _idx = 0
 /** Reset the auto-incrementing idx counter between tests */
 export function resetIdx() { _idx = 0 }
 
-type NodeOptions = Partial<Omit<ElementNode, 'children'>> & { children?: ElementNode[] }
+type LegacyNodeOptions = Partial<Omit<ElementNode, 'children' | 'authoredStyles'>> & {
+  children?: ElementNode[]
+  /**
+   * Ergonomic shorthand for tests predating the authored-value migration:
+   * list of prop names that should be treated as authored. The test helper
+   * populates `authoredStyles` by copying the corresponding entries from
+   * `styles` — the typical case where the authored and computed values agree.
+   */
+  explicitProps?: string[]
+  authoredStyles?: Record<string, string>
+}
 
 /** Build a minimal ElementNode with sensible defaults */
-export function el(tag: string, opts: NodeOptions = {}): ElementNode {
+export function el(tag: string, opts: LegacyNodeOptions = {}): ElementNode {
   const node: ElementNode = {
     idx: opts.idx ?? _idx++,
     tag,
@@ -23,7 +33,18 @@ export function el(tag: string, opts: NodeOptions = {}): ElementNode {
     styles: opts.styles ?? {},
     children: opts.children ?? [],
   }
-  if (opts.explicitProps) node.explicitProps = opts.explicitProps
+
+  const authored: Record<string, string> = { ...(opts.authoredStyles ?? {}) }
+  if (opts.explicitProps) {
+    const styles = opts.styles ?? {}
+    for (const prop of opts.explicitProps) {
+      if (authored[prop] != null) continue
+      const v = styles[prop]
+      if (v != null) authored[prop] = v
+    }
+  }
+  if (Object.keys(authored).length > 0) node.authoredStyles = authored
+
   if (opts.pseudoStateRules) node.pseudoStateRules = opts.pseudoStateRules
   return node
 }

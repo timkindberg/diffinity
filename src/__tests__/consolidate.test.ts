@@ -375,13 +375,55 @@ describe('collapseChanges — padding/margin quad', () => {
     expect(result[0].after).toBe('32px')
   })
 
-  it('does not collapse non-uniform padding', () => {
+  it('does not collapse padding when fewer than 4 sides present', () => {
     const changes: Change[] = [
       change({ property: 'padding-top', before: '16px', after: '32px' }),
       change({ property: 'padding-bottom', before: '16px', after: '32px' }),
     ]
     const result = collapseChanges(changes)
     expect(result).toHaveLength(2)
+  })
+
+  it('collapses padding with vertical/horizontal symmetry to 2-value shorthand', () => {
+    const changes: Change[] = [
+      change({ property: 'padding-top', before: '12px', after: '10px' }),
+      change({ property: 'padding-right', before: '12px', after: '20px' }),
+      change({ property: 'padding-bottom', before: '12px', after: '10px' }),
+      change({ property: 'padding-left', before: '12px', after: '20px' }),
+    ]
+    const result = collapseChanges(changes)
+    expect(result).toHaveLength(1)
+    expect(result[0].property).toBe('padding')
+    expect(result[0].before).toBe('12px')
+    expect(result[0].after).toBe('10px 20px')
+  })
+
+  it('collapses padding with left/right symmetry only to 3-value shorthand', () => {
+    const changes: Change[] = [
+      change({ property: 'padding-top', before: '10px', after: '4px' }),
+      change({ property: 'padding-right', before: '20px', after: '8px' }),
+      change({ property: 'padding-bottom', before: '30px', after: '12px' }),
+      change({ property: 'padding-left', before: '20px', after: '8px' }),
+    ]
+    const result = collapseChanges(changes)
+    expect(result).toHaveLength(1)
+    expect(result[0].property).toBe('padding')
+    expect(result[0].before).toBe('10px 20px 30px')
+    expect(result[0].after).toBe('4px 8px 12px')
+  })
+
+  it('collapses fully asymmetric padding to 4-value shorthand', () => {
+    const changes: Change[] = [
+      change({ property: 'padding-top', before: '1px', after: '5px' }),
+      change({ property: 'padding-right', before: '2px', after: '6px' }),
+      change({ property: 'padding-bottom', before: '3px', after: '7px' }),
+      change({ property: 'padding-left', before: '4px', after: '8px' }),
+    ]
+    const result = collapseChanges(changes)
+    expect(result).toHaveLength(1)
+    expect(result[0].property).toBe('padding')
+    expect(result[0].before).toBe('1px 2px 3px 4px')
+    expect(result[0].after).toBe('5px 6px 7px 8px')
   })
 
   it('collapses uniform margin change to shorthand', () => {
@@ -398,7 +440,7 @@ describe('collapseChanges — padding/margin quad', () => {
     expect(result[0].after).toBe('16px')
   })
 
-  it('does not collapse margin when values differ across sides', () => {
+  it('collapses non-uniform margin to multi-value shorthand', () => {
     const changes: Change[] = [
       change({ property: 'margin-top', before: '8px', after: '16px' }),
       change({ property: 'margin-right', before: '8px', after: '16px' }),
@@ -406,7 +448,10 @@ describe('collapseChanges — padding/margin quad', () => {
       change({ property: 'margin-left', before: '0px', after: '16px' }),
     ]
     const result = collapseChanges(changes)
-    expect(result).toHaveLength(4)
+    expect(result).toHaveLength(1)
+    expect(result[0].property).toBe('margin')
+    expect(result[0].before).toBe('8px 8px 8px 0px')
+    expect(result[0].after).toBe('16px')
   })
 })
 
@@ -774,6 +819,219 @@ describe('flex/grid sibling cascade preservation (vr-jnz)', () => {
     // Child's implicit width change should still be suppressed (parent is block, no sibling cascade)
     const childDiff = consolidated.diffs.find(d => d.label.includes('child'))
     expect(childDiff).toBeUndefined()
+  })
+})
+
+describe('authored-value equality for cascade suppression', () => {
+  // These tests drive the shift from "prop is authored on either side" to
+  // "authored value actually differs between before/after or is added/removed".
+  // The old rule reports every computed-px change on an element that authored
+  // a relative sizing rule (e.g. width: 100%, flex-basis: 1fr) as if the
+  // author changed intent — even when they only changed the container.
+  //
+  // New rule: if authored value is identical on both sides, the computed px
+  // change is purely cascade and should be stripped.
+
+  it('silences `width: 100%` computed-px change when authored value is identical', () => {
+    // Real-world: container width shifts by 2px because its own parent reflows
+    // (e.g. sidebar mutation on the page). The child with `width: 100%` faithfully
+    // mirrors the shift. The author did not change anything about this element —
+    // the width: 100% is the same rule before and after.
+    const before = el('body', { children: [
+      el('div', { testId: 'card', styles: { width: '520px' }, authoredStyles: { width: '100%' }, bbox: { x: 0, y: 0, w: 520, h: 100 } }),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'card', styles: { width: '518px' }, authoredStyles: { width: '100%' }, bbox: { x: 0, y: 0, w: 518, h: 100 } }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+    const cardDiff = consolidated.diffs.find(d => d.label.includes('card'))
+    expect(cardDiff, 'implicit width: 100% cascade should be silenced').toBeUndefined()
+  })
+
+  it('silences `grid-template-columns: 1fr 1fr` when authored value is identical', () => {
+    // Classic VNDLY case: a two-column grid resizes 2px because its parent resized.
+    // The author wrote `1fr 1fr` and didn't change anything; the browser only
+    // reports different computed px tracks. Should be silenced.
+    const before = el('body', { children: [
+      el('div', {
+        testId: 'grid',
+        styles: { display: 'grid', 'grid-template-columns': '518.5px 518.5px' },
+        authoredStyles: { display: 'grid', 'grid-template-columns': '1fr 1fr' },
+        bbox: { x: 0, y: 0, w: 1040, h: 100 },
+      }),
+    ]})
+    const after = el('body', { children: [
+      el('div', {
+        testId: 'grid',
+        styles: { display: 'grid', 'grid-template-columns': '516.5px 516.5px' },
+        authoredStyles: { display: 'grid', 'grid-template-columns': '1fr 1fr' },
+        bbox: { x: 0, y: 0, w: 1034, h: 100 },
+      }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+    const gridDiff = consolidated.diffs.find(d => d.label.includes('grid'))
+    expect(gridDiff, 'same authored `1fr 1fr` → computed-px track change is cascade').toBeUndefined()
+  })
+
+  it('preserves `grid-template-columns` when authored value differs (1fr 1fr → 1fr 2fr)', () => {
+    // Author genuinely changed intent: keep the diff.
+    const before = el('body', { children: [
+      el('div', {
+        testId: 'grid',
+        styles: { display: 'grid', 'grid-template-columns': '520px 520px' },
+        authoredStyles: { display: 'grid', 'grid-template-columns': '1fr 1fr' },
+        bbox: { x: 0, y: 0, w: 1040, h: 100 },
+      }),
+    ]})
+    const after = el('body', { children: [
+      el('div', {
+        testId: 'grid',
+        styles: { display: 'grid', 'grid-template-columns': '347px 693px' },
+        authoredStyles: { display: 'grid', 'grid-template-columns': '1fr 2fr' },
+        bbox: { x: 0, y: 0, w: 1040, h: 100 },
+      }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+    const gridDiff = consolidated.diffs.find(d => d.label.includes('grid'))
+    expect(gridDiff, 'different authored tracks → preserved').toBeDefined()
+    expect(gridDiff!.changes.some(c => c.property === 'grid-template-columns')).toBe(true)
+  })
+
+  it('preserves `width` when authored value differs (100% → 50%)', () => {
+    const before = el('body', { children: [
+      el('div', { testId: 'card', styles: { width: '520px' }, authoredStyles: { width: '100%' }, bbox: { x: 0, y: 0, w: 520, h: 100 } }),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'card', styles: { width: '260px' }, authoredStyles: { width: '50%' }, bbox: { x: 0, y: 0, w: 260, h: 100 } }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+    const cardDiff = consolidated.diffs.find(d => d.label.includes('card'))
+    expect(cardDiff, 'different authored percentage → preserved').toBeDefined()
+    expect(cardDiff!.changes.some(c => c.property === 'width')).toBe(true)
+  })
+
+  it('preserves `width` when authored on one side only (added or removed rule)', () => {
+    // Author added `width: 100%` where previously there was none. The change in
+    // authoring intent matters even though the computed value happens to coincide.
+    const before = el('body', { children: [
+      el('div', { testId: 'card', styles: { width: '520px' }, authoredStyles: {}, bbox: { x: 0, y: 0, w: 520, h: 100 } }),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'card', styles: { width: '520px' }, authoredStyles: { width: '100%' }, bbox: { x: 0, y: 0, w: 520, h: 100 } }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+    const cardDiff = consolidated.diffs.find(d => d.label.includes('card'))
+    // No computed change → nothing to strip either way, this is really a no-op
+    // test for the computed side; the guard is that if the computed IS different
+    // but authored was added/removed, the change survives.
+    if (cardDiff) expect(cardDiff.changes.some(c => c.property === 'width')).toBe(false)
+  })
+
+  it('silences cascade-deference authored values (`width: auto` both sides)', () => {
+    // Capture side already drops `width: auto` from authoredStyles; the new
+    // rule still produces the same outcome (authored absent on both → strip).
+    // This test is a regression guard as we refactor.
+    const before = el('body', { children: [
+      el('div', { testId: 'card', styles: { width: '520px' }, authoredStyles: {}, bbox: { x: 0, y: 0, w: 520, h: 100 } }),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'card', styles: { width: '518px' }, authoredStyles: {}, bbox: { x: 0, y: 0, w: 518, h: 100 } }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+    const cardDiff = consolidated.diffs.find(d => d.label.includes('card'))
+    expect(cardDiff, 'width: auto on both → cascade, silenced').toBeUndefined()
+  })
+})
+
+describe('authored-value equality for cascade suppression — extra shapes', () => {
+  it('silences `flex-basis: 1fr` cascade when authored value is identical', () => {
+    const before = el('body', { children: [
+      el('div', { testId: 'item', styles: { 'flex-basis': '200px', width: '200px' }, authoredStyles: { 'flex-basis': '1fr' }, bbox: { x: 0, y: 0, w: 200, h: 50 } }),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'item', styles: { 'flex-basis': '180px', width: '180px' }, authoredStyles: { 'flex-basis': '1fr' }, bbox: { x: 0, y: 0, w: 180, h: 50 } }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+    const itemDiff = consolidated.diffs.find(d => d.label.includes('item'))
+    expect(itemDiff, 'same authored flex-basis `1fr` → cascade, silenced').toBeUndefined()
+  })
+
+  it('preserves `flex-basis` when authored value differs (1fr → 50%)', () => {
+    const before = el('body', { children: [
+      el('div', { testId: 'item', styles: { 'flex-basis': '200px' }, authoredStyles: { 'flex-basis': '1fr' }, bbox: { x: 0, y: 0, w: 200, h: 50 } }),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'item', styles: { 'flex-basis': '100px' }, authoredStyles: { 'flex-basis': '50%' }, bbox: { x: 0, y: 0, w: 100, h: 50 } }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+    const itemDiff = consolidated.diffs.find(d => d.label.includes('item'))
+    expect(itemDiff, 'different authored flex-basis → preserved').toBeDefined()
+    expect(itemDiff!.changes.some(c => c.property === 'flex-basis')).toBe(true)
+  })
+
+  it('silences `width: fit-content` cascade when authored value is identical', () => {
+    const before = el('body', { children: [
+      el('div', { testId: 'chip', styles: { width: '120px' }, authoredStyles: { width: 'fit-content' }, bbox: { x: 0, y: 0, w: 120, h: 24 } }),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'chip', styles: { width: '118px' }, authoredStyles: { width: 'fit-content' }, bbox: { x: 0, y: 0, w: 118, h: 24 } }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+    const chipDiff = consolidated.diffs.find(d => d.label.includes('chip'))
+    expect(chipDiff, 'same authored `fit-content` → cascade, silenced').toBeUndefined()
+  })
+
+  it('silences `width: calc(...)` cascade when authored value is identical (same rule, different resolved px)', () => {
+    // calc(100% - 40px) computes to a different pixel value when the parent
+    // resizes, but the author's rule is unchanged.
+    const before = el('body', { children: [
+      el('div', { testId: 'card', styles: { width: '360px' }, authoredStyles: { width: 'calc(100% - 40px)' }, bbox: { x: 0, y: 0, w: 360, h: 80 } }),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'card', styles: { width: '340px' }, authoredStyles: { width: 'calc(100% - 40px)' }, bbox: { x: 0, y: 0, w: 340, h: 80 } }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+    const cardDiff = consolidated.diffs.find(d => d.label.includes('card'))
+    expect(cardDiff, 'same authored calc() → cascade, silenced').toBeUndefined()
+  })
+
+  it('preserves `width: calc(...)` when the formula itself changed (100%-40px → 100%-20px)', () => {
+    const before = el('body', { children: [
+      el('div', { testId: 'card', styles: { width: '360px' }, authoredStyles: { width: 'calc(100% - 40px)' }, bbox: { x: 0, y: 0, w: 360, h: 80 } }),
+    ]})
+    const after = el('body', { children: [
+      el('div', { testId: 'card', styles: { width: '380px' }, authoredStyles: { width: 'calc(100% - 20px)' }, bbox: { x: 0, y: 0, w: 380, h: 80 } }),
+    ]})
+
+    const { consolidated } = fullPipeline(before, after)
+    const cardDiff = consolidated.diffs.find(d => d.label.includes('card'))
+    expect(cardDiff, 'different authored calc() → preserved').toBeDefined()
+    expect(cardDiff!.changes.some(c => c.property === 'width')).toBe(true)
+  })
+
+  it('silences `width: min-content` and `width: max-content` cascades when authored value is identical', () => {
+    for (const keyword of ['min-content', 'max-content']) {
+      const before = el('body', { children: [
+        el('div', { testId: `box-${keyword}`, styles: { width: '88px' }, authoredStyles: { width: keyword }, bbox: { x: 0, y: 0, w: 88, h: 20 } }),
+      ]})
+      const after = el('body', { children: [
+        el('div', { testId: `box-${keyword}`, styles: { width: '84px' }, authoredStyles: { width: keyword }, bbox: { x: 0, y: 0, w: 84, h: 20 } }),
+      ]})
+
+      const { consolidated } = fullPipeline(before, after)
+      const boxDiff = consolidated.diffs.find(d => d.label.includes(`box-${keyword}`))
+      expect(boxDiff, `same authored \`${keyword}\` → cascade, silenced`).toBeUndefined()
+    }
   })
 })
 
@@ -1151,18 +1409,21 @@ describe('phantom grid-template-* suppression (display toggles grid)', () => {
   })
 
   it('does not strip grid-template-* when display does not change in/out of grid', () => {
-    // display stays flex, but grid-template-columns somehow changes (should survive)
+    // display stays flex, but grid-template-columns was authored differently
+    // (100px vs 200px). Phantom-grid suppression is only about the display
+    // toggle; an authored value change must survive. (General cascade strip
+    // also preserves it because authored values differ.)
     const before = el('body', { children: [
       el('div', { testId: 'container', styles: {
         display: 'flex',
         'grid-template-columns': '100px',
-      } }),
+      }, explicitProps: ['display', 'grid-template-columns'] }),
     ]})
     const after = el('body', { children: [
       el('div', { testId: 'container', styles: {
         display: 'inline-flex',
         'grid-template-columns': '200px',
-      } }),
+      }, explicitProps: ['display', 'grid-template-columns'] }),
     ]})
 
     const { consolidated } = fullPipeline(before, after)

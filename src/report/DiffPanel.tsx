@@ -277,8 +277,8 @@ export function DiffPanel({
     const fi = flatItems[cursorIdx]
     if (fi) {
       if (fi.kind === 'diff') highlightElement(fi.diff.beforeIdx, fi.diff.afterIdx, fi.diff.type, getChangedProps(fi.diff.changes))
-      else if (fi.kind === 'group') highlightMulti(fi.group.members, fi.group.type)
-      else if (fi.kind === 'cascade') highlightMulti(fi.cluster.members, 'changed')
+      else if (fi.kind === 'group') highlightMulti(fi.group.members, fi.group.type, getChangedProps(fi.group.changes))
+      else if (fi.kind === 'cascade') highlightMulti(fi.cluster.members, 'changed', fi.cluster.properties)
     }
   }, [cursorIdx, focused])
 
@@ -475,10 +475,12 @@ function GroupEntry({ group, flatIdx, focused, cursorIdx, onSetCursor, onFocus, 
   const moreCount = group.members.length - PREVIEW_MAX
   const propNames = group.changes.map(c => c.property).join(', ')
 
+  const changedProps = getChangedProps(group.changes)
+
   return (
     <div
       class={`el-diff importance-${imp}${isFocused ? ' kb-focused' : ''}`}
-      onMouseEnter={() => highlightMulti(group.members, group.type)}
+      onMouseEnter={() => highlightMulti(group.members, group.type, changedProps)}
       onMouseLeave={() => clearHighlights()}
     >
       <div class="el-diff-header" onClick={(e) => {
@@ -511,11 +513,11 @@ function GroupEntry({ group, flatIdx, focused, cursorIdx, onSetCursor, onFocus, 
               class="group-member-item"
               onMouseEnter={(e) => {
                 e.stopPropagation()
-                highlightElement(m.beforeIdx, m.afterIdx, group.type)
+                highlightElement(m.beforeIdx, m.afterIdx, group.type, changedProps)
               }}
               onMouseLeave={(e) => {
                 e.stopPropagation()
-                highlightMulti(group.members, group.type)
+                highlightMulti(group.members, group.type, changedProps)
               }}
             >
               <span class="member-label">{m.label}</span>
@@ -543,10 +545,12 @@ function CascadeEntry({ cluster, flatIdx, focused, cursorIdx, onSetCursor, onFoc
   const preview = cluster.members.slice(0, PREVIEW_MAX).map(m => m.label)
   const moreCount = cluster.members.length - PREVIEW_MAX
 
+  const changedProps = cluster.properties
+
   return (
     <div
       class={`el-diff is-cascade${isFocused ? ' kb-focused' : ''}`}
-      onMouseEnter={() => highlightMulti(cluster.members, 'changed')}
+      onMouseEnter={() => highlightMulti(cluster.members, 'changed', changedProps)}
       onMouseLeave={() => clearHighlights()}
     >
       <div class="el-diff-header" onClick={(e) => {
@@ -581,11 +585,11 @@ function CascadeEntry({ cluster, flatIdx, focused, cursorIdx, onSetCursor, onFoc
             class="group-member-item"
             onMouseEnter={(e) => {
               e.stopPropagation()
-              highlightElement(m.beforeIdx, m.afterIdx, 'changed')
+              highlightElement(m.beforeIdx, m.afterIdx, 'changed', changedProps)
             }}
             onMouseLeave={(e) => {
               e.stopPropagation()
-              highlightMulti(cluster.members, 'changed')
+              highlightMulti(cluster.members, 'changed', changedProps)
             }}
           >
             <span class="member-label">{m.label}</span>

@@ -44,6 +44,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "lib:build": "tsup",
+    "lib:watch": "tsup --watch",
     "report:dev": "vite",
     "report:build": "vite build && cp src/report/highlight-listener.js dist/report/",
     "demo:dev": "vite --config demo-app/vite.config.ts",

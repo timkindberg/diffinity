@@ -464,8 +464,8 @@ export function collapseChanges(changes: Change[]): Change[] {
   result = collapseQuad(result, BORDER_WIDTH_QUAD, 'border-width')
   result = collapseQuad(result, BORDER_COLOR_QUAD, 'border-color')
   result = collapseQuad(result, BORDER_STYLE_QUAD, 'border-style')
-  result = collapseQuad(result, PADDING_QUAD, 'padding')
-  result = collapseQuad(result, MARGIN_QUAD, 'margin')
+  result = collapseSidedQuad(result, PADDING_QUAD, 'padding')
+  result = collapseSidedQuad(result, MARGIN_QUAD, 'margin')
   result = collapseForegroundColor(result)
   result = collapseCoupledPairs(result)
   return result
@@ -489,6 +489,40 @@ function collapseQuad(changes: Change[], quad: string[], shorthand: string): Cha
     description: `${shorthand}: ${first.before} → ${first.after}`,
   }
 
+  const quadSet = new Set(quad)
+  return [...changes.filter(c => !quadSet.has(c.property)), collapsed]
+}
+
+// CSS padding/margin shorthand ordering: top, right, bottom, left.
+// Collapse to the shortest valid form:
+//   all equal → 1 value
+//   T===B && R===L → 2 values: "V H"
+//   R===L         → 3 values: "T H B"
+//   else          → 4 values: "T R B L"
+function formatSidedShorthand(t: string, r: string, b: string, l: string): string {
+  if (t === r && r === b && b === l) return t
+  if (t === b && r === l) return `${t} ${r}`
+  if (r === l) return `${t} ${r} ${b}`
+  return `${t} ${r} ${b} ${l}`
+}
+
+// Like collapseQuad but always fires when all 4 sides are present — emitting a
+// multi-value CSS shorthand when values differ. Used for `padding` and `margin`
+// where reviewers want a single collapsed Change per element instead of four
+// longhand Changes (even when the deltas aren't uniform).
+function collapseSidedQuad(changes: Change[], quad: string[], shorthand: string): Change[] {
+  const sides = quad.map(p => changes.find(c => c.property === p))
+  if (sides.some(c => !c)) return changes
+  const [t, r, b, l] = sides as Change[]
+  const before = formatSidedShorthand(t.before!, r.before!, b.before!, l.before!)
+  const after = formatSidedShorthand(t.after!, r.after!, b.after!, l.after!)
+  const collapsed: Change = {
+    category: t.category,
+    property: shorthand,
+    before,
+    after,
+    description: `${shorthand}: ${before} → ${after}`,
+  }
   const quadSet = new Set(quad)
   return [...changes.filter(c => !quadSet.has(c.property)), collapsed]
 }
@@ -535,16 +569,16 @@ function isGridDisplay(value: string | null): boolean {
  * Suppress phantom grid-template-* changes that only appear because `display`
  * toggled into or out of a grid context. When display: block → grid, the browser
  * starts reporting concrete track sizes for grid-template-columns/rows even
- * though the author never set them. Strip these unless they're in explicitProps.
+ * though the author never set them. Strip these unless they're authored.
  */
-function suppressPhantomGridTemplate(changes: Change[], explicitProps: string[] | undefined): Change[] {
+function suppressPhantomGridTemplate(changes: Change[], authored: Set<string> | undefined): Change[] {
   const displayChange = changes.find(c => c.property === 'display')
   if (!displayChange) return changes
   if (isGridDisplay(displayChange.before) === isGridDisplay(displayChange.after)) return changes
 
   return changes.filter(c => {
     if (!GRID_TEMPLATE_PROPS.has(c.property)) return true
-    return explicitProps != null && explicitProps.includes(c.property)
+    return authored != null && authored.has(c.property)
   })
 }
 
@@ -602,7 +636,23 @@ function parsePx(val: string | null): number | null {
   return m ? parseFloat(m[1]) : null
 }
 
-const CASCADE_PROPS = new Set(['width', 'height', 'min-width', 'max-width', 'min-height', 'max-height'])
+/**
+ * Properties whose computed value commonly changes purely as a cascade effect
+ * from an ancestor or sibling resize — even when the author's rule is unchanged.
+ * A grid with `grid-template-columns: 1fr 1fr` reports different pixel tracks
+ * when its parent's width shifts, even though the author wrote the same rule.
+ * Same story for `flex-basis: 1fr`, `width: 100%`, etc.
+ *
+ * At consolidation time, a change to one of these is treated as cascade noise
+ * UNLESS the authored value actually differs between before and after. See
+ * `authoredDiffersOrAbsent` for the signal used to decide.
+ */
+const CASCADE_PROPS = new Set([
+  'width', 'height',
+  'min-width', 'max-width', 'min-height', 'max-height',
+  'grid-template-columns', 'grid-template-rows',
+  'flex-basis',
+])
 
 // Properties whose authored change on a flex/grid parent or its children can
 // redistribute space among siblings. When a flex/grid sibling has an authored
@@ -768,7 +818,7 @@ const PROPERTY_DOMINANCE: Record<string, number> = {
   'opacity': 70,
 }
 
-function scoreChange(c: Change, explicitProps?: string[]): number {
+function scoreChange(c: Change, authored?: Set<string>): number {
   const base = PROPERTY_DOMINANCE[c.property] ?? SCORE_WEIGHTS[c.category] ?? 10
 
   // Transparent ↔ opaque background is adding/removing a visual surface
@@ -791,7 +841,7 @@ function scoreChange(c: Change, explicitProps?: string[]): number {
   const aPx = parsePx(c.after)
   if (bPx != null && aPx != null) {
     const isCascade = CASCADE_PROPS.has(c.property) && (c.category === 'bbox' || c.category === 'box-model' || c.category === 'sizing')
-    const isExplicit = explicitProps != null && explicitProps.includes(c.property)
+    const isExplicit = authored != null && authored.has(c.property)
     const effectiveBase = isCascade && !isExplicit ? Math.round(base * 0.4) : base
     const delta = Math.abs(aPx - bPx)
     if (delta <= 1) return 2
@@ -815,7 +865,7 @@ function areaMultiplier(area: number | undefined): number {
   return 1.4
 }
 
-export function scoreDiff(diff: Pick<ElementDiff, 'type' | 'changes'>, area?: number, explicitProps?: string[]): number {
+export function scoreDiff(diff: Pick<ElementDiff, 'type' | 'changes'>, area?: number, authored?: Set<string>): number {
   if (diff.type === 'added' || diff.type === 'removed') return 100
   if (diff.type === 'moved' && diff.changes.length === 0) return 40
 
@@ -824,7 +874,7 @@ export function scoreDiff(diff: Pick<ElementDiff, 'type' | 'changes'>, area?: nu
   let total = 0
   for (const c of diff.changes) {
     const count = categoryCounts.get(c.category) || 0
-    const raw = scoreChange(c, explicitProps)
+    const raw = scoreChange(c, authored)
     total += count === 0 ? raw : Math.round(raw * 0.5)
     categoryCounts.set(c.category, count + 1)
   }
@@ -879,13 +929,36 @@ export function consolidateDiffs(
     return node ? node.bbox.w * node.bbox.h : undefined
   }
 
-  function getExplicitProps(diff: ElementDiff): string[] | undefined {
+  /**
+   * Returns the set of props authored on either before or after for this diff.
+   * A prop is in the set if the author wrote ANY value for it (the value itself
+   * is not considered here). Use `authoredDiffersOrAbsent()` when you need to
+   * know whether the authored intent actually changed between before and after.
+   */
+  function getAuthoredProps(diff: ElementDiff): Set<string> | undefined {
     const bNode = diff.beforeIdx != null ? beforeNodes.get(diff.beforeIdx) : undefined
     const aNode = diff.afterIdx != null ? afterNodes.get(diff.afterIdx) : undefined
-    const bExplicit = bNode?.explicitProps ?? []
-    const aExplicit = aNode?.explicitProps ?? []
-    const combined = [...new Set([...bExplicit, ...aExplicit])]
-    return combined.length > 0 ? combined : undefined
+    const combined = new Set<string>()
+    if (bNode?.authoredStyles) for (const k of Object.keys(bNode.authoredStyles)) combined.add(k)
+    if (aNode?.authoredStyles) for (const k of Object.keys(aNode.authoredStyles)) combined.add(k)
+    return combined.size > 0 ? combined : undefined
+  }
+
+  /**
+   * True when the authored value for `prop` actually differs between the
+   * before and after snapshots — or when the authored value is absent on one
+   * or both sides, which means the author removed/added the rule (also a real
+   * intent change). This is the core signal for deciding whether a computed
+   * change is cascade noise vs authored change.
+   */
+  function authoredDiffersOrAbsent(diff: ElementDiff, prop: string): boolean {
+    const bNode = diff.beforeIdx != null ? beforeNodes.get(diff.beforeIdx) : undefined
+    const aNode = diff.afterIdx != null ? afterNodes.get(diff.afterIdx) : undefined
+    const bVal = bNode?.authoredStyles?.[prop]
+    const aVal = aNode?.authoredStyles?.[prop]
+    if (bVal == null && aVal == null) return false
+    if (bVal == null || aVal == null) return true
+    return bVal !== aVal
   }
 
   // Pre-compute which elements have display property changes (for child suppression)
@@ -906,9 +979,11 @@ export function consolidateDiffs(
   for (const diff of raw.diffs) {
     const bNode = diff.beforeIdx != null ? beforeNodes.get(diff.beforeIdx) : undefined
     const aNode = diff.afterIdx != null ? afterNodes.get(diff.afterIdx) : undefined
-    const explicit = new Set([...(bNode?.explicitProps ?? []), ...(aNode?.explicitProps ?? [])])
+    const authoredKeys = new Set<string>()
+    if (bNode?.authoredStyles) for (const k of Object.keys(bNode.authoredStyles)) authoredKeys.add(k)
+    if (aNode?.authoredStyles) for (const k of Object.keys(aNode.authoredStyles)) authoredKeys.add(k)
     const hasAuthoredLayoutChange = diff.changes.some(c =>
-      LAYOUT_AFFECTING_PROPS.has(c.property) && explicit.has(c.property))
+      LAYOUT_AFFECTING_PROPS.has(c.property) && authoredKeys.has(c.property))
     if (!hasAuthoredLayoutChange) continue
     if (diff.afterIdx != null) authoredLayoutChangeAfterIdx.add(diff.afterIdx)
     if (diff.beforeIdx != null) authoredLayoutChangeBeforeIdx.add(diff.beforeIdx)
@@ -979,10 +1054,13 @@ export function consolidateDiffs(
       }
     }
 
-    // Suppress implicit size changes per-property: strip individual CASCADE_PROPS
-    // (width, height, min-*, max-*) changes when those properties are NOT in
-    // explicitProps, even if the diff has other meaningful changes that should remain.
-    // After stripping, re-score. If all changes stripped, suppress the entire diff.
+    // Suppress implicit size changes per-property: strip individual
+    // CASCADE_PROPS (width/height/min-*/max-*/grid-template-*/flex-basis)
+    // when the authored value is unchanged — the computed-px change is cascade
+    // noise driven by an ancestor or sibling reflow. Keep the change when
+    // authored intent actually differs (e.g. `100% → 50%`, `1fr 1fr → 1fr 2fr`,
+    // or the rule was added/removed). After stripping, re-score. If nothing
+    // survives, drop the whole diff.
     //
     // Exception (vr-jnz): when the element is a flex/grid item and a sibling or
     // the flex/grid parent has an authored layout-affecting change, preserve the
@@ -996,10 +1074,9 @@ export function consolidateDiffs(
         hasFlexGridSiblingCascade(diff.beforeIdx, beforeParents, beforeNodes, authoredLayoutChangeBeforeIdx)
 
       if (!inFlexGridCascade) {
-        const explicit = getExplicitProps(diff)
         const filtered = changes.filter(c => {
           if (!CASCADE_PROPS.has(c.property)) return true
-          return explicit != null && explicit.includes(c.property)
+          return authoredDiffersOrAbsent(diff, c.property)
         })
         if (filtered.length < changes.length) {
           changes = filtered
@@ -1014,7 +1091,7 @@ export function consolidateDiffs(
     // Suppress implicit child dimensions from parent display type changes:
     // When a parent changes display (e.g., block→flex), children gain computed
     // width/height/min-* values they didn't have before (inline→block conversion).
-    // Strip these from children that don't have those properties in explicitProps.
+    // Strip these when the authored intent on the child is unchanged.
     if ((diff.type === 'changed' || diff.type === 'moved+changed') &&
         changes.length > 0 &&
         changes.some(c => CASCADE_PROPS.has(c.property))) {
@@ -1025,10 +1102,9 @@ export function consolidateDiffs(
         (beforeParent != null && displayChangedBeforeIdx.has(beforeParent))
 
       if (parentHasDisplayChange) {
-        const explicit = getExplicitProps(diff)
         const filtered = changes.filter(c => {
           if (!CASCADE_PROPS.has(c.property)) return true
-          return explicit != null && explicit.includes(c.property)
+          return authoredDiffersOrAbsent(diff, c.property)
         })
         if (filtered.length < changes.length) {
           changes = filtered
@@ -1046,8 +1122,8 @@ export function consolidateDiffs(
     if ((diff.type === 'changed' || diff.type === 'moved+changed') &&
         changes.some(c => c.property === 'display') &&
         changes.some(c => GRID_TEMPLATE_PROPS.has(c.property))) {
-      const explicit = getExplicitProps(diff)
-      const filtered = suppressPhantomGridTemplate(changes, explicit)
+      const authored = getAuthoredProps(diff)
+      const filtered = suppressPhantomGridTemplate(changes, authored)
       if (filtered.length < changes.length) {
         changes = filtered
         if (changes.length === 0) {
@@ -1098,7 +1174,7 @@ export function consolidateDiffs(
     }
 
     if (changes !== diff.changes) {
-      const score = scoreDiff({ type: diff.type, changes }, getArea(diff), getExplicitProps(diff))
+      const score = scoreDiff({ type: diff.type, changes }, getArea(diff), getAuthoredProps(diff))
       diffs.push({ ...diff, changes, score, importance: scoreToImportance(score) })
     } else {
       diffs.push(diff)
@@ -1241,11 +1317,10 @@ function deduplicateAncestorChanges(
     } else {
       const bNode = diff.beforeIdx != null ? beforeNodes?.get(diff.beforeIdx) : undefined
       const aNode = diff.afterIdx != null ? afterNodes?.get(diff.afterIdx) : undefined
-      const bEx = bNode?.explicitProps ?? []
-      const aEx = aNode?.explicitProps ?? []
-      const combined = [...new Set([...bEx, ...aEx])]
-      const elExplicit = combined.length > 0 ? combined : undefined
-      const score = scoreDiff({ type: diff.type, changes: remaining }, undefined, elExplicit)
+      const authoredKeys = new Set<string>()
+      if (bNode?.authoredStyles) for (const k of Object.keys(bNode.authoredStyles)) authoredKeys.add(k)
+      if (aNode?.authoredStyles) for (const k of Object.keys(aNode.authoredStyles)) authoredKeys.add(k)
+      const score = scoreDiff({ type: diff.type, changes: remaining }, undefined, authoredKeys.size > 0 ? authoredKeys : undefined)
       result.push({ ...diff, changes: remaining, score, importance: scoreToImportance(score) })
     }
   }
@@ -1373,11 +1448,10 @@ export function diffManifests(
     else type = 'changed'
 
     const elArea = bNode.bbox.w * bNode.bbox.h
-    const bExplicit = bNode.explicitProps ?? []
-    const aExplicit = aNode.explicitProps ?? []
-    const combined = [...new Set([...bExplicit, ...aExplicit])]
-    const elExplicitProps = combined.length > 0 ? combined : undefined
-    const score = scoreDiff({ type, changes }, elArea, elExplicitProps)
+    const authoredKeys = new Set<string>()
+    if (bNode.authoredStyles) for (const k of Object.keys(bNode.authoredStyles)) authoredKeys.add(k)
+    if (aNode.authoredStyles) for (const k of Object.keys(aNode.authoredStyles)) authoredKeys.add(k)
+    const score = scoreDiff({ type, changes }, elArea, authoredKeys.size > 0 ? authoredKeys : undefined)
     diffs.push({
       type,
       beforeIdx: pair.beforeIdx,

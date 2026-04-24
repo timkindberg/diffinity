@@ -34,7 +34,12 @@ afterAll(async () => { await browser?.close() })
 const noop = () => {}
 
 // Mirror of CASCADE_PROPS from diff.ts for test assertions
-const CASCADE_PROPS_SET = new Set(['width', 'height', 'min-width', 'max-width', 'min-height', 'max-height'])
+const CASCADE_PROPS_SET = new Set([
+  'width', 'height',
+  'min-width', 'max-width', 'min-height', 'max-height',
+  'grid-template-columns', 'grid-template-rows',
+  'flex-basis',
+])
 
 async function captureHtml(html: string): Promise<DomManifest> {
   await page.setContent(html, { waitUntil: 'load' })
@@ -1458,6 +1463,114 @@ describe('CSS variable cascade', () => {
       .reduce((sum, g) => sum + g.members.length, 0)
     expect(diffElemCount + groupElemCount).toBeGreaterThanOrEqual(3)
   })
+
+  it('resolves var(--x) to the current custom-property value in authoredStyles', async () => {
+    // The author writes `grid-template-columns: var(--cols)`. If the theme
+    // changes --cols from `1fr 1fr` to `1fr 2fr` between captures, the stored
+    // authored value must reflect the resolved value, not the literal `var()`,
+    // so the diff engine sees intent actually changed.
+    const html = `<!doctype html><html><body>
+      <style>
+        :root { --cols: 1fr 1fr; }
+        .grid { display: grid; grid-template-columns: var(--cols); width: 400px; }
+        .grid > div { height: 30px; background: tomato; }
+      </style>
+      <div data-testid="g" class="grid"><div></div><div></div></div>
+    </body></html>`
+    const manifest = await captureHtml(html)
+
+    function findByTestId(node: any, testId: string): any {
+      if (node?.testId === testId) return node
+      for (const child of node?.children ?? []) {
+        const found = findByTestId(child, testId)
+        if (found) return found
+      }
+      return null
+    }
+
+    const grid = findByTestId(manifest.root, 'g')
+    expect(grid).toBeDefined()
+    expect(grid.authoredStyles?.['grid-template-columns']).toBe('1fr 1fr')
+  })
+
+  it('resolves var() fallbacks when the custom property is unset', async () => {
+    const html = `<!doctype html><html><body>
+      <style>
+        .box { width: var(--missing, 50%); }
+      </style>
+      <div data-testid="b" class="box" style="height: 20px"></div>
+    </body></html>`
+    const manifest = await captureHtml(html)
+
+    function findByTestId(node: any, testId: string): any {
+      if (node?.testId === testId) return node
+      for (const child of node?.children ?? []) {
+        const found = findByTestId(child, testId)
+        if (found) return found
+      }
+      return null
+    }
+
+    const box = findByTestId(manifest.root, 'b')
+    expect(box).toBeDefined()
+    expect(box.authoredStyles?.width).toBe('50%')
+  })
+
+  it('preserves grid-template-columns diff when var() value differs between runs (same authored text)', async () => {
+    // Author wrote the same literal on both sides but the resolved custom
+    // property differs — the author's effective intent differs, so the diff
+    // must survive even though the raw rule text is identical.
+    const beforeHtml = `<!doctype html><html><body>
+      <style>
+        :root { --cols: 1fr 1fr; }
+        .grid { display: grid; grid-template-columns: var(--cols); width: 400px; }
+        .grid > div { height: 20px; background: tomato; }
+      </style>
+      <div data-testid="grid" class="grid"><div></div><div></div></div>
+    </body></html>`
+    const afterHtml = `<!doctype html><html><body>
+      <style>
+        :root { --cols: 1fr 2fr; }
+        .grid { display: grid; grid-template-columns: var(--cols); width: 400px; }
+        .grid > div { height: 20px; background: tomato; }
+      </style>
+      <div data-testid="grid" class="grid"><div></div><div></div></div>
+    </body></html>`
+
+    const r = await diffHtml(beforeHtml, afterHtml)
+    const gridDiff = r.consolidated.diffs.find(d => d.label.toLowerCase().includes('grid'))
+    expect(gridDiff, 'resolved var values differ → grid-template-columns change survives').toBeDefined()
+    expect(gridDiff!.changes.some(c => c.property === 'grid-template-columns')).toBe(true)
+  })
+
+  it('silences grid-template-columns diff when var() value is identical and only the container resized', async () => {
+    // Same authored rule, same resolved --cols value. Parent width changed,
+    // so computed px tracks shift, but author intent is unchanged → strip.
+    const beforeHtml = `<!doctype html><html><body>
+      <style>
+        :root { --cols: 1fr 1fr; }
+        .wrap { width: 400px; }
+        .grid { display: grid; grid-template-columns: var(--cols); }
+        .grid > div { height: 20px; background: tomato; }
+      </style>
+      <div class="wrap"><div data-testid="grid" class="grid"><div></div><div></div></div></div>
+    </body></html>`
+    const afterHtml = `<!doctype html><html><body>
+      <style>
+        :root { --cols: 1fr 1fr; }
+        .wrap { width: 380px; }
+        .grid { display: grid; grid-template-columns: var(--cols); }
+        .grid > div { height: 20px; background: tomato; }
+      </style>
+      <div class="wrap"><div data-testid="grid" class="grid"><div></div><div></div></div></div>
+    </body></html>`
+
+    const r = await diffHtml(beforeHtml, afterHtml)
+    const gridDiff = r.consolidated.diffs.find(d => d.label.toLowerCase().includes('grid'))
+    if (gridDiff) {
+      expect(gridDiff.changes.some(c => c.property === 'grid-template-columns')).toBe(false)
+    }
+  })
 })
 
 // =====================================================================
@@ -1473,16 +1586,15 @@ describe('False-positive resistance', () => {
     expect(r.groups).toHaveLength(0)
   })
 
-  it('identical re-render with explicitProps populated produces zero diffs', async () => {
+  it('identical re-render with authoredStyles populated produces zero diffs', async () => {
     const { before, after } = f('False-positive resistance', 'identical re-render produces zero diffs')
     const r = await diffHtml(before, after)
 
-    // Verify explicitProps is populated on captured manifests
-    function hasAnyExplicitProps(node: any): boolean {
-      if (node.explicitProps && node.explicitProps.length > 0) return true
-      return node.children?.some((c: any) => hasAnyExplicitProps(c)) ?? false
+    function hasAnyAuthoredStyles(node: any): boolean {
+      if (node.authoredStyles && Object.keys(node.authoredStyles).length > 0) return true
+      return node.children?.some((c: any) => hasAnyAuthoredStyles(c)) ?? false
     }
-    expect(hasAnyExplicitProps(r.before.root)).toBe(true)
+    expect(hasAnyAuthoredStyles(r.before.root)).toBe(true)
     expect(r.diffs).toHaveLength(0)
   })
 
@@ -1547,17 +1659,16 @@ describe('Explicit vs implicit size scoring', () => {
 
     const diff = findDiffByLabel(r, 'explicit-box')
     expect(diff).toBeDefined()
-    // With explicitProps, height change on an element with explicit CSS height
+    // With authoredStyles, height change on an element with explicit CSS height
     // should use full base score (40 for box-model) * 1.5 for delta > 20px = 60
-    // Without explicitProps it would be: 40 * 0.4 * 1.5 = 24
+    // Without authoredStyles it would be: 40 * 0.4 * 1.5 = 24
     expect(diff!.score).toBeGreaterThanOrEqual(25) // at least moderate
   })
 
-  it('populates explicitProps on captured manifest nodes', async () => {
+  it('populates authoredStyles on captured manifest nodes', async () => {
     const { before } = f('Explicit vs implicit size scoring', 'explicit width change scores higher than cascade')
     const manifest = await captureHtml(before)
 
-    // The .box element has explicit width and height in CSS
     function findByTestId(node: any, testId: string): any {
       if (node.testId === testId) return node
       for (const child of node.children ?? []) {
@@ -1569,9 +1680,9 @@ describe('Explicit vs implicit size scoring', () => {
 
     const boxNode = findByTestId(manifest.root, 'explicit-box')
     expect(boxNode).toBeDefined()
-    expect(boxNode.explicitProps).toBeDefined()
-    expect(boxNode.explicitProps).toContain('width')
-    expect(boxNode.explicitProps).toContain('height')
+    expect(boxNode.authoredStyles).toBeDefined()
+    expect(boxNode.authoredStyles.width).toBeDefined()
+    expect(boxNode.authoredStyles.height).toBeDefined()
   })
 
   it('excludes size props whose authored value is a cascade-deference keyword', async () => {
@@ -1585,7 +1696,7 @@ describe('Explicit vs implicit size scoring', () => {
     }
 
     // Each box authors a size prop with a keyword that means "defer to cascade/browser".
-    // None of these should land in explicitProps — they aren't really authored sizes.
+    // None of these should land in authoredStyles — they aren't really authored sizes.
     const html = `<!doctype html><html><body>
       <style>
         .auto    { width: auto;         height: 10px; }
@@ -1609,16 +1720,17 @@ describe('Explicit vs implicit size scoring', () => {
     for (const id of ['b-auto', 'b-initial', 'b-inherit', 'b-unset', 'b-revert', 'b-rlayer']) {
       const node = findByTestId(manifest.root, id)
       expect(node, id).toBeDefined()
-      // width was authored but with a deference keyword — must NOT be in explicitProps
-      expect(node.explicitProps ?? [], id).not.toContain('width')
-      // height was authored with a real length — MUST be in explicitProps
-      expect(node.explicitProps ?? [], id).toContain('height')
+      const authored = node.authoredStyles ?? {}
+      // width was authored but with a deference keyword — must NOT be in authoredStyles
+      expect(authored.width, id).toBeUndefined()
+      // height was authored with a real length — MUST be in authoredStyles
+      expect(authored.height, id).toBeDefined()
     }
 
     // Sanity: a real authored value still counts
-    const authored = findByTestId(manifest.root, 'b-authored')
-    expect(authored.explicitProps).toContain('width')
-    expect(authored.explicitProps).toContain('height')
+    const authored = findByTestId(manifest.root, 'b-authored').authoredStyles ?? {}
+    expect(authored.width).toBeDefined()
+    expect(authored.height).toBeDefined()
   })
 
   it('keeps non-size props authored with "none" (display:none, background-image:none) as explicit', async () => {
@@ -1646,11 +1758,11 @@ describe('Explicit vs implicit size scoring', () => {
 
     // display:none elements may be pruned (no bbox); only assert if captured.
     const hidden = findByTestId(manifest.root, 'b-hidden')
-    if (hidden) expect(hidden.explicitProps ?? []).toContain('display')
+    if (hidden) expect((hidden.authoredStyles ?? {}).display).toBeDefined()
 
     const noBg = findByTestId(manifest.root, 'b-no-bg')
     expect(noBg).toBeDefined()
-    expect(noBg!.explicitProps ?? []).toContain('background-image')
+    expect((noBg!.authoredStyles ?? {})['background-image']).toBeDefined()
   })
 })
 
@@ -1706,5 +1818,88 @@ describe('Implicit ancestor size suppression', () => {
     if (innerDiff) {
       expect(innerDiff.changes.some(c => !CASCADE_PROPS_SET.has(c.property))).toBe(true)
     }
+  })
+})
+
+// =====================================================================
+// Section 51: data-vr-idx stability across repeated captures
+// =====================================================================
+
+describe('data-vr-idx stability', () => {
+  // Regression: capturing twice on the same page (e.g. synthetic after-flow)
+  // must never produce duplicate data-vr-idx attributes. Previously, elements
+  // that became display:none between captures kept their stale idx from the
+  // first walk while newly-visible elements were reassigned overlapping idx
+  // values — two elements sharing an idx broke querySelector lookups in the
+  // report, causing highlights to land on the wrong (hidden) element.
+  it('re-capturing after hiding elements produces no duplicate data-vr-idx', async () => {
+    const html = `<!doctype html><html><body>
+      <table>
+        <thead><tr>
+          <th data-testid="h1">A</th>
+          <th data-testid="h2">B</th>
+          <th data-testid="h3-last"><span>Last</span><svg width="10" height="10"><path d="M0 0"/></svg></th>
+        </tr></thead>
+        <tbody><tr>
+          <td data-testid="c1">row-a</td>
+          <td data-testid="c2">row-b</td>
+          <td data-testid="c3-last">row-last</td>
+        </tr></tbody>
+      </table>
+    </body></html>`
+
+    await page.setContent(html, { waitUntil: 'load' })
+
+    // Capture 1 — like the "before" pass
+    await captureDomManifest(page, noop)
+
+    // Hide the last column — mirrors HIDE_LAST_COLUMN from capture-faked-after
+    await page.evaluate(() => {
+      document.querySelectorAll('th:last-child, td:last-child').forEach(el => {
+        (el as HTMLElement).style.display = 'none'
+      })
+    })
+
+    // Capture 2 — like the "after" pass, same document, same idx counter re-run
+    await captureDomManifest(page, noop)
+
+    // Every data-vr-idx in the DOM must be unique
+    const counts = await page.evaluate(() => {
+      const counts: Record<string, number> = {}
+      for (const el of document.querySelectorAll('[data-vr-idx]')) {
+        const idx = el.getAttribute('data-vr-idx')!
+        counts[idx] = (counts[idx] ?? 0) + 1
+      }
+      return counts
+    })
+
+    const duplicates = Object.entries(counts).filter(([, c]) => c > 1)
+    expect(duplicates).toEqual([])
+  })
+
+  it('stale idx on hidden elements does not survive a re-capture', async () => {
+    const html = `<!doctype html><html><body>
+      <div data-testid="wrapper">
+        <span data-testid="kid">visible</span>
+      </div>
+    </body></html>`
+
+    await page.setContent(html, { waitUntil: 'load' })
+    await captureDomManifest(page, noop)
+
+    // Hide the wrapper — its children are no longer laid out
+    await page.evaluate(() => {
+      (document.querySelector('[data-testid="wrapper"]') as HTMLElement).style.display = 'none'
+    })
+
+    await captureDomManifest(page, noop)
+
+    // The hidden descendants must not retain stale data-vr-idx attributes
+    // (they weren't re-walked, so the capture must have cleared them up front).
+    const hasStale = await page.evaluate(() => {
+      const kid = document.querySelector('[data-testid="kid"]')
+      return kid?.hasAttribute('data-vr-idx') ?? false
+    })
+    expect(hasStale).toBe(false)
   })
 })

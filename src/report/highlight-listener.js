@@ -83,11 +83,17 @@
   var MARGIN_SIDES = ['margin-top', 'margin-right', 'margin-bottom', 'margin-left', 'margin'];
 
   var boxOverlays = [];
+  // Shared write cursor across drawBoxModelOverlays() calls. Reset in
+  // clearBoxOverlays() so a new highlight event starts fresh, but NOT reset
+  // between members of the same highlight-multi call — otherwise the second
+  // member's overlays would overwrite the first member's in the pool.
+  var boxOverlayCursor = 0;
 
   function clearBoxOverlays() {
     for (var i = 0; i < boxOverlays.length; i++) {
       if (boxOverlays[i]) boxOverlays[i].style.display = 'none';
     }
+    boxOverlayCursor = 0;
   }
 
   function getOrCreateBoxOverlay(index) {
@@ -119,7 +125,6 @@
 
     var cs = getComputedStyle(el);
     var rect = el.getBoundingClientRect();
-    var idx = 0;
 
     if (hasMargin) {
       var mt = parseFloat(cs.marginTop) || 0;
@@ -129,7 +134,7 @@
 
       // Top margin
       if (mt !== 0 && sideChanged('margin-top')) {
-        var ov = getOrCreateBoxOverlay(idx++);
+        var ov = getOrCreateBoxOverlay(boxOverlayCursor++);
         ov.style.cssText = 'position:absolute;pointer-events:none;display:block;'
           + 'left:' + (rect.left - ml) + 'px;'
           + 'top:' + (rect.top - Math.abs(mt)) + 'px;'
@@ -139,7 +144,7 @@
       }
       // Bottom margin
       if (mb !== 0 && sideChanged('margin-bottom')) {
-        var ov = getOrCreateBoxOverlay(idx++);
+        var ov = getOrCreateBoxOverlay(boxOverlayCursor++);
         ov.style.cssText = 'position:absolute;pointer-events:none;display:block;'
           + 'left:' + (rect.left - ml) + 'px;'
           + 'top:' + rect.bottom + 'px;'
@@ -149,7 +154,7 @@
       }
       // Left margin
       if (ml !== 0 && sideChanged('margin-left')) {
-        var ov = getOrCreateBoxOverlay(idx++);
+        var ov = getOrCreateBoxOverlay(boxOverlayCursor++);
         ov.style.cssText = 'position:absolute;pointer-events:none;display:block;'
           + 'left:' + (rect.left - Math.abs(ml)) + 'px;'
           + 'top:' + rect.top + 'px;'
@@ -159,7 +164,7 @@
       }
       // Right margin
       if (mr !== 0 && sideChanged('margin-right')) {
-        var ov = getOrCreateBoxOverlay(idx++);
+        var ov = getOrCreateBoxOverlay(boxOverlayCursor++);
         ov.style.cssText = 'position:absolute;pointer-events:none;display:block;'
           + 'left:' + rect.right + 'px;'
           + 'top:' + rect.top + 'px;'
@@ -177,7 +182,7 @@
 
       // Top padding
       if (pt !== 0 && sideChanged('padding-top')) {
-        var ov = getOrCreateBoxOverlay(idx++);
+        var ov = getOrCreateBoxOverlay(boxOverlayCursor++);
         ov.style.cssText = 'position:absolute;pointer-events:none;display:block;'
           + 'left:' + rect.left + 'px;'
           + 'top:' + rect.top + 'px;'
@@ -187,7 +192,7 @@
       }
       // Bottom padding
       if (pb !== 0 && sideChanged('padding-bottom')) {
-        var ov = getOrCreateBoxOverlay(idx++);
+        var ov = getOrCreateBoxOverlay(boxOverlayCursor++);
         ov.style.cssText = 'position:absolute;pointer-events:none;display:block;'
           + 'left:' + rect.left + 'px;'
           + 'top:' + (rect.bottom - pb) + 'px;'
@@ -197,7 +202,7 @@
       }
       // Left padding
       if (pl !== 0 && sideChanged('padding-left')) {
-        var ov = getOrCreateBoxOverlay(idx++);
+        var ov = getOrCreateBoxOverlay(boxOverlayCursor++);
         ov.style.cssText = 'position:absolute;pointer-events:none;display:block;'
           + 'left:' + rect.left + 'px;'
           + 'top:' + (rect.top + pt) + 'px;'
@@ -207,7 +212,7 @@
       }
       // Right padding
       if (pr !== 0 && sideChanged('padding-right')) {
-        var ov = getOrCreateBoxOverlay(idx++);
+        var ov = getOrCreateBoxOverlay(boxOverlayCursor++);
         ov.style.cssText = 'position:absolute;pointer-events:none;display:block;'
           + 'left:' + (rect.right - pr) + 'px;'
           + 'top:' + (rect.top + pt) + 'px;'
@@ -417,11 +422,13 @@
       if (e.data.phase) phase = e.data.phase;
       var indices = e.data.indices;
       var type = e.data.type || 'changed';
+      var changedProps = e.data.changedProps || [];
       var scrolled = false;
       for (var i = 0; i < indices.length; i++) {
         var el = document.querySelector('[data-vr-idx="' + indices[i] + '"]');
         if (el) {
           highlightSingle(el, type, i, !scrolled);
+          if (changedProps.length) drawBoxModelOverlays(el, changedProps);
           scrolled = true;
         }
       }

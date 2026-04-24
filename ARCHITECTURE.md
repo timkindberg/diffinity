@@ -46,9 +46,11 @@ Here is where most tools go wrong, and where Diffinity made its most consequenti
 
 `getComputedStyle()` is the easy API, but it returns a resolved *result* — a hall of mirrors where the browser has already mixed in UA defaults, cascade overrides, custom property substitutions, and font-stack fallbacks. Diff two such results and you will see phantom changes that no human authored.
 
-Instead, Diffinity walks `document.styleSheets` — the **CSS Object Model**, the source of truth. Every rule, every selector, every property as the author wrote it. For each rule, it runs `querySelectorAll(rule.selectorText)` to find the elements it targets, then records each declared property into that element's `explicitProps` set. One sweep through the stylesheets yields authored intent for every element in the page.
+Instead, Diffinity walks `document.styleSheets` — the **CSS Object Model**, the source of truth. Every rule, every selector, every property as the author wrote it. For each rule, it runs `querySelectorAll(rule.selectorText)` to find the elements it targets, then records each declared property *and its authored value* into that element's `authoredStyles` map. One sweep through the stylesheets yields authored intent — name and value — for every element in the page.
 
-This gives Diffinity a second identity for each style property: did a human write this, or did the browser derive it? That distinction becomes the backbone of noise reduction later.
+`var(--x)` references are resolved at capture time. If the author writes `grid-template-columns: var(--cols)` and a theme update changes `--cols` from `1fr 1fr` to `1fr 2fr`, the stored authored value moves with it. The diff engine sees real intent, not indirected text.
+
+This gives Diffinity a second identity for each style property: did a human write this value, or did the browser derive it from the cascade? Crucially, the engine can compare the **authored value** on both sides of a diff. `width: 100%` unchanged in authoredStyles but different in pixels = container reflow, not author change. `width: 100% → width: 50%` in authoredStyles = author change, regardless of pixel delta. That distinction becomes the backbone of noise reduction later.
 
 > Early versions used computed styles. Re-rendering a captured page diverged from the live page by 28%. Switching to the CSSOM-authored approach dropped that to **0.000%** — bit-for-bit identical rendering.
 
@@ -90,20 +92,22 @@ Capture is a lie until you prove it isn't. After writing the reconstructed HTML,
 
 The core problem: element X in the *before* capture and element Y in the *after* capture — are they the same element? There are no primary keys. IDs are often framework-generated and unstable. Diffinity uses a **layered identity-signal scoring system**, ranking each potential pair across many weak signals:
 
-| Signal | Weight | Notes |
-|---|---|---|
-| Tag match (baseline) | +10 | Everyone starts here |
-| `data-testid` match | +50 | Strongest signal; author-stable |
-| User-authored `id` | +30 | Framework IDs excluded (see below) |
-| `role` | +15 | Accessibility landmark |
-| `aria-label` | +20 | Authored intent |
-| Accessible name | +20 | Computed via the browser's own W3C engine |
-| Full text equality | +15 | Exact content |
-| Partial text (first 20 chars) | +5 | Fuzzy |
-| Class overlap | 0–10 | Normalized by set size |
-| Stable attrs (`name`, `href`, `src`) | +10 each | Form/link/image |
-| Children-count equality | +5 / +2 | Exact / within 2 |
-| Ancestor-path similarity | 0–15 | Proportional to matched depth |
+
+| Signal                               | Weight   | Notes                                     |
+| ------------------------------------ | -------- | ----------------------------------------- |
+| Tag match (baseline)                 | +10      | Everyone starts here                      |
+| `data-testid` match                  | +50      | Strongest signal; author-stable           |
+| User-authored `id`                   | +30      | Framework IDs excluded (see below)        |
+| `role`                               | +15      | Accessibility landmark                    |
+| `aria-label`                         | +20      | Authored intent                           |
+| Accessible name                      | +20      | Computed via the browser's own W3C engine |
+| Full text equality                   | +15      | Exact content                             |
+| Partial text (first 20 chars)        | +5       | Fuzzy                                     |
+| Class overlap                        | 0–10     | Normalized by set size                    |
+| Stable attrs (`name`, `href`, `src`) | +10 each | Form/link/image                           |
+| Children-count equality              | +5 / +2  | Exact / within 2                          |
+| Ancestor-path similarity             | 0–15     | Proportional to matched depth             |
+
 
 Any pair scoring below **15** is too distant to bother with. Above that, the algorithm greedily matches highest-scoring pairs first. Survivors become matched pairs; the leftovers become "added" (on the after side) or "removed" (on the before side).
 
@@ -181,7 +185,7 @@ Diffinity's check is almost poetic in its tininess: if `beforeMargin === beforeF
 
 Toggle `display: flex` to `display: grid` and the browser suddenly reports *concrete* values for `grid-template-rows` and `grid-template-columns`. No rule set them. They appeared out of the void, because a grid without a template has an implicit one.
 
-Diffinity cross-references: if `display` flipped into or out of grid, and the `grid-template-*` properties aren't in `explicitProps`, they are phantoms. Drop them. Keep the single `display` change that caused it all.
+Diffinity cross-references: if `display` flipped into or out of grid, and the `grid-template-`* properties aren't in `authoredStyles`, they are phantoms. Drop them. Keep the single `display` change that caused it all.
 
 ### 5. Shorthand collapse
 
@@ -192,6 +196,14 @@ When `padding-top`, `padding-right`, `padding-bottom`, and `padding-left` all ch
 Subtler case: an element has *both* authored changes (border-width, border-color) *and* cascade-induced size drift. You don't want to suppress the whole element — the authored change is real. You want to strip only the noise.
 
 Diffinity does per-property surgery: keep the authored properties; drop the cascade-induced ones from the same diff. The real change stands alone.
+
+The strip rule is **authored-value equality**, not mere presence. For sizing properties (`width`, `height`, `min-*`, `max-*`, `grid-template-columns`, `grid-template-rows`, `flex-basis`) the engine compares the authored value on both sides:
+
+- Same authored value both sides → cascade noise, strip.
+- Different authored values → author changed intent, preserve.
+- Authored on one side only → add/remove of a rule, preserve.
+
+This handles the classic pattern where a card with `width: 100%` reports `520px → 518px` purely because its parent reflowed by two pixels. The authored rule is unchanged; the report stays silent. Same logic for grids with `grid-template-columns: 1fr 1fr` that shift by a couple of pixels when the viewport or container resizes.
 
 ### 7. Cascade clustering
 

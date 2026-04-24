@@ -201,11 +201,17 @@ This is why diffinity works well on React/Vue apps that don't expose stable ids 
 
 A naive DOM diff produces hundreds of false positives — computed styles drift in ways that don't reflect author intent. Diffinity's consolidation pipeline applies a stack of targeted suppressions so the default report surfaces only changes a human cares about.
 
-### Authored-vs-computed (explicitProps)
+### Authored-vs-computed (`authoredStyles`)
 
-Each captured element carries `explicitProps` — the set of CSS properties actually written by the author (via stylesheet rules or inline styles). Values like `auto`, `initial`, `inherit`, `unset` are excluded, since they mean "browser figures it out."
+Each captured element carries `authoredStyles` — a map from CSS property name to the value the author actually wrote (via stylesheet rules or inline styles). Cascade-deference keywords like `auto`, `initial`, `inherit`, `unset` are excluded for sizing properties, since they mean "browser figures it out." `var(--x)` references are resolved at capture time so the stored value reflects the current theme, not the indirection.
 
-This matters for scoring. An authored `width: 400px → 200px` is major; a width change caused by flow reflow (sibling grew) is minor. The engine checks the union of before+after `explicitProps` — adding, removing, or changing an authored value all count as authored intent.
+This matters for noise reduction on sizing properties. An authored `width: 400px → 200px` is major; a width change caused by flow reflow (sibling grew, parent shrunk) is minor — or silent. The engine compares the *authored value* on both sides:
+
+- **Same authored value** (`width: 100%` both sides, computed px differs) → cascade noise, stripped.
+- **Different authored value** (`1fr 1fr → 1fr 2fr`, `100% → 50%`, `var(--cols)` where `--cols` flipped) → author changed intent, preserved.
+- **Authored on one side only** → rule was added/removed, preserved.
+
+This applies to `width`, `height`, `min-*`, `max-*`, `grid-template-columns`, `grid-template-rows`, and `flex-basis` — every property where a relative authored rule (`100%`, `1fr`, `calc(…)`, `fit-content`, `min-content`, `max-content`) can yield a pixel delta from a container change alone.
 
 ### Implicit ancestor suppression
 

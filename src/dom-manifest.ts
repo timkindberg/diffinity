@@ -55,7 +55,16 @@ export type ElementNode = {
   text: string | null
   bbox: { x: number; y: number; w: number; h: number }
   styles: Record<string, string>
-  explicitProps?: string[]
+  /**
+   * Authored CSS values for this element, keyed by property name. Captured by
+   * walking every CSSStyleRule whose selector matches the element, plus the
+   * element's inline styles. The stored value is the authored text ('100%',
+   * '1fr 1fr', 'var(--cols)' with --cols resolved, etc.), NOT the browser's
+   * resolved/computed value. Used by diff.ts to decide whether a computed
+   * change came from the author's intent (authored value differs) or is
+   * cascade noise from another element (authored value unchanged).
+   */
+  authoredStyles?: Record<string, string>
   pseudoStateRules?: PseudoStateRule[]
   children: ElementNode[]
 }
@@ -94,6 +103,15 @@ function captureManifestInBrowser(styleProps: string[]) {
       }
       return replacement
     })
+  }
+
+  // Clear any stale data-vr-idx attributes from a previous capture on this
+  // same document. If we don't, elements that become hidden between captures
+  // keep their old idx while newly-visible elements are reassigned lower idx
+  // values from the restarted counter — two elements end up sharing an idx
+  // and querySelector lookups in the report iframe land on the wrong one.
+  for (const el of document.querySelectorAll('[data-vr-idx]')) {
+    el.removeAttribute('data-vr-idx')
   }
 
   let idx = 0
@@ -236,22 +254,80 @@ function buildBackendNodeIdMap(node: any, map: Map<number, string> = new Map()):
 
 /**
  * Browser-side function passed to page.evaluate().
- * Walks document.styleSheets (rule-first) and inline styles to identify
- * which CSS properties were explicitly authored for each tagged element.
- * Returns a map of data-vr-idx → list of authored property names.
+ * Walks document.styleSheets (rule-first) and inline styles to identify what
+ * the author wrote for each tagged element. Returns a map of data-vr-idx →
+ * { propName → authoredValue }.
+ *
+ * The authored value is the text the author wrote (e.g. '100%', '1fr 1fr'),
+ * not the browser's resolved/computed value.
+ *
+ * Cascade-deference keywords on size properties (`auto`, `initial`, `inherit`,
+ * `unset`, `revert`, `revert-layer`) are excluded: the author essentially
+ * said "defer to the cascade/browser", which is indistinguishable from not
+ * authoring the property at all. Later cycles revisit this when we move
+ * entirely to authored-value comparison at diff time.
  */
-function captureExplicitPropsInBrowser(styleProps: string[]) {
+function captureAuthoredStylesInBrowser(styleProps: string[]) {
   const tracked = new Set(styleProps)
   const SIZE_PROPS = new Set(['width', 'height', 'min-width', 'max-width', 'min-height', 'max-height'])
   const AUTO_VALUES = new Set(['auto', 'initial', 'inherit', 'unset', 'revert', 'revert-layer'])
-  const map = new Map<string, Set<string>>()
+  const map = new Map<string, Map<string, string>>()
 
-  function addProp(idx: string, prop: string, value?: string) {
+  /**
+   * Replace var(--name[, fallback]) references with their resolved value on
+   * `el`. When the custom property is unset and a fallback is supplied, the
+   * fallback is used. Unresolvable vars are left as-is. Nested/chained vars
+   * are resolved iteratively (bounded loop so a pathological chain can't
+   * infinite-loop the capture).
+   *
+   * This matters because the authored text is what diff.ts uses to decide
+   * whether the author's intent changed. If we stored the literal `var(--x)`,
+   * a theme flip that changes the value of `--x` would look identical on both
+   * sides and the diff would be incorrectly suppressed as cascade noise.
+   */
+  function resolveVars(value: string, el: Element): string {
+    if (!value.includes('var(')) return value
+    let current = value
+    for (let iter = 0; iter < 8 && current.includes('var('); iter++) {
+      let next = ''
+      let j = 0
+      while (j < current.length) {
+        const varStart = current.indexOf('var(', j)
+        if (varStart === -1) { next += current.slice(j); break }
+        next += current.slice(j, varStart)
+        let depth = 1
+        let k = varStart + 4
+        while (k < current.length && depth > 0) {
+          if (current[k] === '(') depth++
+          else if (current[k] === ')') depth--
+          if (depth > 0) k++
+        }
+        if (depth !== 0) { next += current.slice(varStart); break }
+        const inside = current.slice(varStart + 4, k)
+        const commaIdx = inside.indexOf(',')
+        const varName = (commaIdx === -1 ? inside : inside.slice(0, commaIdx)).trim()
+        const fallback = commaIdx === -1 ? '' : inside.slice(commaIdx + 1).trim()
+        let resolved = ''
+        try { resolved = getComputedStyle(el).getPropertyValue(varName).trim() } catch { /* ignore */ }
+        if (!resolved && fallback) resolved = fallback
+        next += resolved || current.slice(varStart, k + 1)
+        j = k + 1
+      }
+      if (next === current) break
+      current = next
+    }
+    return current.trim()
+  }
+
+  function addProp(idx: string, el: Element, prop: string, value: string | null) {
     if (!tracked.has(prop)) return
-    if (value && SIZE_PROPS.has(prop) && AUTO_VALUES.has(value.trim())) return
-    let set = map.get(idx)
-    if (!set) { set = new Set(); map.set(idx, set) }
-    set.add(prop)
+    if (value == null) return
+    const authored = resolveVars(value, el).trim()
+    if (!authored) return
+    if (SIZE_PROPS.has(prop) && AUTO_VALUES.has(authored)) return
+    let m = map.get(idx)
+    if (!m) { m = new Map(); map.set(idx, m) }
+    m.set(prop, authored)
   }
 
   function walkRules(rules: CSSRuleList) {
@@ -265,7 +341,7 @@ function captureExplicitPropsInBrowser(styleProps: string[]) {
           if (!idx) continue
           for (let j = 0; j < rule.style.length; j++) {
             const propName = rule.style[j]
-            addProp(idx, propName, rule.style.getPropertyValue(propName))
+            addProp(idx, el, propName, rule.style.getPropertyValue(propName))
           }
         }
       } else if ('cssRules' in rule) {
@@ -278,30 +354,31 @@ function captureExplicitPropsInBrowser(styleProps: string[]) {
     try { walkRules(sheet.cssRules) } catch { continue }
   }
 
-  // Inline styles
+  // Inline styles take precedence over stylesheet rules (higher specificity).
   for (const el of document.querySelectorAll('[data-vr-idx]')) {
     if (!(el instanceof HTMLElement)) continue
     const idx = el.getAttribute('data-vr-idx')!
     for (let i = 0; i < el.style.length; i++) {
       const propName = el.style[i]
-      addProp(idx, propName, el.style.getPropertyValue(propName))
+      addProp(idx, el, propName, el.style.getPropertyValue(propName))
     }
   }
 
-  // Serialize to plain object
-  const result: Record<string, string[]> = {}
-  for (const [idx, set] of map) {
-    result[idx] = [...set]
+  const result: Record<string, Record<string, string>> = {}
+  for (const [idx, m] of map) {
+    const obj: Record<string, string> = {}
+    for (const [k, v] of m) obj[k] = v
+    result[idx] = obj
   }
   return result
 }
 
-/** Merge explicit props into the manifest tree by idx. */
-function mergeExplicitProps(node: ElementNode, propsMap: Record<string, string[]>) {
-  const props = propsMap[String(node.idx)]
-  if (props) node.explicitProps = props
+/** Merge authored styles into the manifest tree by idx. */
+function mergeAuthoredStyles(node: ElementNode, stylesMap: Record<string, Record<string, string>>) {
+  const s = stylesMap[String(node.idx)]
+  if (s && Object.keys(s).length > 0) node.authoredStyles = s
   for (const child of node.children) {
-    mergeExplicitProps(child, propsMap)
+    mergeAuthoredStyles(child, stylesMap)
   }
 }
 
@@ -444,8 +521,8 @@ export async function captureDomManifest(
   const t1a = Date.now()
   if (result.root) {
     try {
-      const explicitPropsMap = await page.evaluate(captureExplicitPropsInBrowser, VISUAL_STYLE_PROPS)
-      mergeExplicitProps(result.root as ElementNode, explicitPropsMap)
+      const authoredStylesMap = await page.evaluate(captureAuthoredStylesInBrowser, VISUAL_STYLE_PROPS)
+      mergeAuthoredStyles(result.root as ElementNode, authoredStylesMap)
     } catch (err) {
       log(`  CSSOM explicit props pass failed: ${err instanceof Error ? err.message : err}`)
     }
