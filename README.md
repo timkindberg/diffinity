@@ -322,4 +322,14 @@ The live demo at [timkindberg.github.io/diffinity](https://timkindberg.github.io
 
 ## License
 
-MIT
+**Source-available, all rights reserved.** See [LICENSE](./LICENSE) for the full text.
+
+This code is published publicly so people can read it, learn from it, and discuss the ideas — but **no rights to use, copy, modify, or redistribute it are currently granted**. If you want to run diffinity on your own project, or build on it, please reach out first.
+
+### Why the restriction?
+
+Diffinity was designed and built while I'm employed at Workday, and I'm still working through the right way to share it openly. I'd like this to land under a permissive or source-available open-source license (MIT, Apache 2.0, PolyForm Noncommercial, or BUSL are all on the table), but I want to get that right — with the proper approvals — rather than pick a license now and regret it later.
+
+Until a formal license is issued in writing, treat this repository as source-visible proprietary code. The restrictive stance is intentionally conservative and I fully expect to relax it once the open-source path is settled.
+
+If you're interested in using diffinity and can't wait, open an issue or get in touch.
